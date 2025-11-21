@@ -1,5 +1,12 @@
 import * as THREE from 'three';
 
+export interface TreeData {
+    x: number;
+    z: number;
+    rotationY: number;
+    scale: number;
+}
+
 export class TreeGenerator {
     private trees: THREE.Group[] = [];
 
@@ -79,6 +86,32 @@ export class TreeGenerator {
             tree.scale.set(scale, scale, scale);
             
             tree.position.set(x, 0, z);
+            
+            forest.add(tree);
+            this.trees.push(tree);
+        }
+
+        scene.add(forest);
+        return this.trees;
+    }
+
+    /**
+     * Generate forest from server-provided tree data.
+     * This ensures all clients see trees in the same positions.
+     */
+    public generateForestFromData(
+        scene: THREE.Scene,
+        treeData: TreeData[]
+    ): THREE.Group[] {
+        const forest = new THREE.Group();
+        this.trees = [];
+
+        for (const data of treeData) {
+            const tree = this.createTree();
+            
+            tree.position.set(data.x, 0, data.z);
+            tree.rotation.y = data.rotationY;
+            tree.scale.set(data.scale, data.scale, data.scale);
             
             forest.add(tree);
             this.trees.push(tree);

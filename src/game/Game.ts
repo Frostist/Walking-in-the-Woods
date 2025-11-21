@@ -71,6 +71,18 @@ export class Game {
         // Connect to multiplayer server
         this.networkManager.connect();
 
+        // Setup callback to generate trees when received from server
+        this.networkManager.onTreesReceived((trees) => {
+            console.log(`Generating ${trees.length} trees from server data`);
+            this.sceneManager.generateTreesFromServerData(trees);
+        });
+
+        // Setup callback to generate grass when received from server
+        this.networkManager.onGrassReceived((grass) => {
+            console.log(`Generating ${grass.length} grass patches from server data`);
+            this.sceneManager.generateGrassFromServerData(grass);
+        });
+
         // Setup event listeners
         this.setupEventListeners();
 

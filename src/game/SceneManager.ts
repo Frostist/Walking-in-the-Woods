@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { TreeGenerator } from './TreeGenerator';
+import { TreeGenerator, TreeData } from './TreeGenerator';
 import { Monster } from './Monster';
 import { FeatureFlags } from './FeatureFlags';
+import { GrassData } from './NetworkManager';
 
 export class SceneManager {
     private scene: THREE.Scene;
@@ -84,16 +85,21 @@ export class SceneManager {
         this.createSun();
         this.createMoon();
 
-        // Generate forest
-        const treeCount = 80;
-        const treeSpread = 60;
-        this.treeGenerator.generateForest(this.scene, treeCount, treeSpread);
+        // Trees will be generated from server data - see generateTreesFromServerData()
 
         // Create monster - spawn it away from player (if feature flag is enabled)
         if (FeatureFlags.MONSTER_ENABLED) {
             const monsterStartPos = new THREE.Vector3(20, 1.0, 20);
             this.monster = new Monster(this.scene, monsterStartPos);
         }
+    }
+
+    /**
+     * Generate trees from server-provided tree data.
+     * This ensures all clients see trees in the same positions.
+     */
+    public generateTreesFromServerData(treeData: TreeData[]): void {
+        this.treeGenerator.generateForestFromData(this.scene, treeData);
     }
 
     private createSun(): void {
@@ -176,11 +182,14 @@ export class SceneManager {
         // Store ground reference
         (this as any).ground = ground;
 
-        // Add grass patches
-        this.addGrassPatches(terrainSize);
+        // Grass will be generated from server data - see generateGrassFromServerData()
     }
 
-    private addGrassPatches(terrainSize: number): void {
+    /**
+     * Generate grass from server-provided grass data.
+     * This ensures all clients see grass in the same positions.
+     */
+    public generateGrassFromServerData(grassData: GrassData[]): void {
         // Create simple grass representation using small green boxes
         const grassGeometry = new THREE.BoxGeometry(0.1, 0.3, 0.1);
         const grassMaterial = new THREE.MeshStandardMaterial({ 
@@ -188,23 +197,13 @@ export class SceneManager {
             roughness: 0.9
         });
 
-        // Create multiple grass patches
-        const grassCount = 200;
-        for (let i = 0; i < grassCount; i++) {
+        // Create grass patches from server data
+        for (const data of grassData) {
             const grass = new THREE.Mesh(grassGeometry, grassMaterial);
             
-            // Random position within terrain
-            const x = (Math.random() - 0.5) * terrainSize * 0.8;
-            const z = (Math.random() - 0.5) * terrainSize * 0.8;
-            const y = 0.15; // Half height of grass
-            
-            grass.position.set(x, y, z);
-            grass.rotation.y = Math.random() * Math.PI * 2;
-            grass.scale.set(
-                0.8 + Math.random() * 0.4,
-                0.8 + Math.random() * 0.4,
-                0.8 + Math.random() * 0.4
-            );
+            grass.position.set(data.x, data.y, data.z);
+            grass.rotation.y = data.rotationY;
+            grass.scale.set(data.scaleX, data.scaleY, data.scaleZ);
             
             grass.castShadow = true;
             grass.receiveShadow = true;

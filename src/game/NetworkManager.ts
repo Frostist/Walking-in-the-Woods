@@ -14,6 +14,23 @@ export interface RemotePlayerData {
     lastUpdateTime: number;
 }
 
+export interface TreeData {
+    x: number;
+    z: number;
+    rotationY: number;
+    scale: number;
+}
+
+export interface GrassData {
+    x: number;
+    z: number;
+    y: number;
+    rotationY: number;
+    scaleX: number;
+    scaleY: number;
+    scaleZ: number;
+}
+
 export enum ConnectionStatus {
     DISCONNECTED = 'disconnected',  // Red - Not connected at all
     CONNECTING = 'connecting',        // Yellow - Trying to connect
@@ -32,6 +49,12 @@ export class NetworkManager {
     private connectionAttempts: number = 0;
     private serverGameTime: number = 0; // Server-synchronized game time in milliseconds
     private lastServerTimeUpdate: number = 0; // Local timestamp when we last received server time
+    private trees: TreeData[] = [];
+    private treesReceived: boolean = false;
+    private onTreesReceivedCallback: ((trees: TreeData[]) => void) | null = null;
+    private grass: GrassData[] = [];
+    private grassReceived: boolean = false;
+    private onGrassReceivedCallback: ((grass: GrassData[]) => void) | null = null;
 
     constructor(serverUrl: string = 'http://localhost:3001') {
         this.serverUrl = serverUrl;
@@ -128,6 +151,26 @@ export class NetworkManager {
             this.serverGameTime = serverTime;
             this.lastServerTimeUpdate = performance.now();
         });
+
+        // Handle tree data from server
+        this.socket.on('trees', (treeData: TreeData[]) => {
+            console.log(`Received ${treeData.length} trees from server`);
+            this.trees = treeData;
+            this.treesReceived = true;
+            if (this.onTreesReceivedCallback) {
+                this.onTreesReceivedCallback(treeData);
+            }
+        });
+
+        // Handle grass data from server
+        this.socket.on('grass', (grassData: GrassData[]) => {
+            console.log(`Received ${grassData.length} grass patches from server`);
+            this.grass = grassData;
+            this.grassReceived = true;
+            if (this.onGrassReceivedCallback) {
+                this.onGrassReceivedCallback(grassData);
+            }
+        });
     }
 
     public disconnect(): void {
@@ -214,6 +257,56 @@ export class NetworkManager {
         // Extrapolate current time based on elapsed time since last server update
         const timeSinceLastUpdate = performance.now() - this.lastServerTimeUpdate;
         return this.serverGameTime + timeSinceLastUpdate;
+    }
+
+    /**
+     * Get tree data from server. Returns empty array if not received yet.
+     */
+    public getTrees(): TreeData[] {
+        return this.trees;
+    }
+
+    /**
+     * Check if tree data has been received from server.
+     */
+    public hasTrees(): boolean {
+        return this.treesReceived;
+    }
+
+    /**
+     * Set callback to be called when tree data is received from server.
+     */
+    public onTreesReceived(callback: (trees: TreeData[]) => void): void {
+        this.onTreesReceivedCallback = callback;
+        // If trees already received, call callback immediately
+        if (this.treesReceived) {
+            callback(this.trees);
+        }
+    }
+
+    /**
+     * Get grass data from server. Returns empty array if not received yet.
+     */
+    public getGrass(): GrassData[] {
+        return this.grass;
+    }
+
+    /**
+     * Check if grass data has been received from server.
+     */
+    public hasGrass(): boolean {
+        return this.grassReceived;
+    }
+
+    /**
+     * Set callback to be called when grass data is received from server.
+     */
+    public onGrassReceived(callback: (grass: GrassData[]) => void): void {
+        this.onGrassReceivedCallback = callback;
+        // If grass already received, call callback immediately
+        if (this.grassReceived) {
+            callback(this.grass);
+        }
     }
 }
 

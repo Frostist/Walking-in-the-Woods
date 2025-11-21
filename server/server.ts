@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { generateTrees, TreeData, generateGrass, GrassData } from './TreeGenerator.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -98,6 +99,18 @@ interface PlayerState {
 
 const players: Map<string, PlayerState> = new Map();
 
+// Generate trees once on server startup - all clients will see the same trees
+const TREE_COUNT = 80;
+const TREE_SPREAD = 60;
+const TREE_SEED = 12345; // Fixed seed for deterministic generation
+const trees: TreeData[] = generateTrees(TREE_COUNT, TREE_SPREAD, TREE_SEED);
+
+// Generate grass once on server startup - all clients will see the same grass
+const GRASS_COUNT = 200;
+const TERRAIN_SIZE = 200;
+const GRASS_SEED = 54321; // Different seed from trees for variety
+const grass: GrassData[] = generateGrass(GRASS_COUNT, TERRAIN_SIZE, GRASS_SEED);
+
 // Game time synchronization - tracks elapsed time for day/night cycle
 // This ensures all players see the same sun/moon position
 const CYCLE_DURATION = 300000; // 5 minutes in milliseconds (matches client)
@@ -123,6 +136,12 @@ io.on('connection', (socket) => {
     // Send current game time to newly connected player
     const currentGameTime = Date.now() - gameStartTime;
     socket.emit('gameTime', currentGameTime);
+    
+    // Send tree data to newly connected player
+    socket.emit('trees', trees);
+    
+    // Send grass data to newly connected player
+    socket.emit('grass', grass);
     
     // Send current players to newly connected player
     const allPlayers = Array.from(players.values());

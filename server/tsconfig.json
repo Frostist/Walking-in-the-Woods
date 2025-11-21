@@ -12,7 +12,7 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["server.ts"],
+  "include": ["*.ts"],
   "exclude": ["node_modules"]
 }
 
