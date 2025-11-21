@@ -1,5 +1,6 @@
 export interface LeaderboardEntry {
     player_id: string;
+    player_name: string | null;
     total_kills: number;
     player_kills: number;
     monster_kills: number;
@@ -79,6 +80,16 @@ export class Leaderboard {
 
     private setupKeyboardToggle(): void {
         document.addEventListener('keydown', (e) => {
+            // Don't toggle if user is typing in an input field
+            const activeElement = document.activeElement;
+            if (activeElement && (
+                activeElement.tagName === 'INPUT' || 
+                activeElement.tagName === 'TEXTAREA' ||
+                (activeElement instanceof HTMLElement && activeElement.isContentEditable)
+            )) {
+                return;
+            }
+            
             if (e.code === 'KeyL' && !e.ctrlKey && !e.altKey && !e.metaKey) {
                 e.preventDefault();
                 this.toggle();
@@ -167,17 +178,19 @@ export class Leaderboard {
             leaderboard.forEach((entry, index) => {
                 const rank = index + 1;
                 const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
-                const playerIdDisplay = entry.player_id.length > 12 
-                    ? entry.player_id.substring(0, 12) + '...' 
-                    : entry.player_id;
+                // Use player_name if available, otherwise fall back to shortened player_id
+                const playerDisplay = entry.player_name || 
+                    (entry.player_id.length > 12 
+                        ? entry.player_id.substring(0, 12) + '...' 
+                        : entry.player_id);
 
                 html += `
                     <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
                         <td style="padding: 12px 8px; font-weight: bold; color: ${rank <= 3 ? '#fbbf24' : '#fff'};">
                             ${medal} ${rank}
                         </td>
-                        <td style="padding: 12px 8px; font-family: monospace; font-size: 13px;">
-                            ${playerIdDisplay}
+                        <td style="padding: 12px 8px; font-size: 13px; color: #fff;">
+                            ${playerDisplay}
                         </td>
                         <td style="text-align: right; padding: 12px 8px; font-weight: bold; color: #4ade80;">
                             ${entry.total_kills}

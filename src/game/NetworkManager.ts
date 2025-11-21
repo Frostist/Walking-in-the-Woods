@@ -5,6 +5,7 @@ export interface PlayerUpdate {
     id: string;
     position: { x: number; y: number; z: number };
     rotationY: number;
+    name?: string;
 }
 
 export interface RemotePlayerData {
@@ -82,8 +83,18 @@ export class NetworkManager {
     private blocksReceived: boolean = false;
     private onBlocksReceivedCallback: ((blocks: BlockData[]) => void) | null = null;
 
+    private playerName: string = 'Player';
+
     constructor(serverUrl: string = 'http://localhost:3001') {
         this.serverUrl = serverUrl;
+    }
+
+    public setPlayerName(name: string): void {
+        this.playerName = name;
+    }
+
+    public getPlayerName(): string {
+        return this.playerName;
     }
 
     public connect(): void {
@@ -108,6 +119,10 @@ export class NetworkManager {
             this.isConnected = true;
             this.connectionStatus = ConnectionStatus.CONNECTED;
             this.connectionAttempts = 0;
+            // Send player name to server on connection
+            if (this.socket) {
+                this.socket.emit('playerName', this.playerName);
+            }
         });
 
         this.socket.on('disconnect', (reason: string) => {

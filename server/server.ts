@@ -159,7 +159,8 @@ io.on('connection', (socket) => {
         rotationY: 0,
         health: 5, // 5 hearts
         maxHealth: 5,
-        isDead: false
+        isDead: false,
+        name: 'Player' // Default name
     };
     players.set(socket.id, playerState);
     
@@ -201,6 +202,41 @@ io.on('connection', (socket) => {
         socket.emit('monsterDied');
     }
     
+    // Handle player name
+    socket.on('playerName', async (name: string) => {
+        const player = players.get(socket.id);
+        if (player) {
+            try {
+                // Sanitize name
+                const sanitizedName = (name || 'Player').substring(0, 20).replace(/[<>]/g, '') || 'Player';
+                
+                // Register name in database (will handle uniqueness)
+                const registeredName = await dbManager.registerPlayerName(socket.id, sanitizedName);
+                player.name = registeredName;
+                
+                console.log(`Player ${socket.id} set name to: ${registeredName}${registeredName !== sanitizedName ? ` (original: ${sanitizedName} was taken)` : ''}`);
+                
+                // Broadcast updated player info to all clients
+                io.emit('playerUpdate', {
+                    id: socket.id,
+                    position: player.position,
+                    rotationY: player.rotationY,
+                    name: player.name
+                });
+            } catch (error) {
+                console.error(`Error registering player name for ${socket.id}:`, error);
+                // Fallback to default name
+                player.name = 'Player';
+                io.emit('playerUpdate', {
+                    id: socket.id,
+                    position: player.position,
+                    rotationY: player.rotationY,
+                    name: player.name
+                });
+            }
+        }
+    });
+    
     // Notify other players about new player
     socket.broadcast.emit('playerJoined', playerState);
     
@@ -215,7 +251,8 @@ io.on('connection', (socket) => {
             socket.broadcast.emit('playerUpdate', {
                 id: socket.id,
                 position: data.position,
-                rotationY: data.rotationY
+                rotationY: data.rotationY,
+                name: player.name
             });
         }
     });
@@ -345,6 +382,25 @@ app.get('/api/leaderboard', async (req, res) => {
     } catch (error) {
         console.error('Error fetching leaderboard:', error);
         res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    }
+});
+
+// Clear database endpoint (requires secret key for safety)
+app.post('/api/clear-db', async (req, res) => {
+    try {
+        // Check for secret key in query or body
+        const secretKey = req.query.key || req.body.key;
+        const expectedKey = process.env.DB_CLEAR_SECRET || 'clear-db-secret-key-change-in-production';
+        
+        if (secretKey !== expectedKey) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        
+        await dbManager.clearDatabase();
+        res.json({ success: true, message: 'Database cleared successfully' });
+    } catch (error) {
+        console.error('Error clearing database:', error);
+        res.status(500).json({ error: 'Failed to clear database' });
     }
 });
 

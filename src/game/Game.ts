@@ -77,6 +77,23 @@ export class Game {
     }
 
     public async init(): Promise<void> {
+        // Disable controls until name is entered
+        this.playerController.disableControls();
+        
+        // Check if player name is already in cookies
+        let playerName = this.getPlayerNameFromCookie();
+        
+        // If no name in cookies, show name input modal
+        if (!playerName) {
+            playerName = await this.showNameInput();
+            this.savePlayerNameToCookie(playerName);
+        }
+        
+        this.networkManager.setPlayerName(playerName);
+        
+        // Enable controls after name is set
+        this.playerController.enableControls();
+        
         // Show loading screen
         this.showLoadingScreen();
         this.updateLoadingProgress(10, 'Setting up scene...');
@@ -265,6 +282,130 @@ export class Game {
                 }
             }, 500);
         }
+    }
+
+    private getPlayerNameFromCookie(): string | null {
+        const name = document.cookie
+            .split('; ')
+            .find(row => row.startsWith('playerName='))
+            ?.split('=')[1];
+        return name ? decodeURIComponent(name) : null;
+    }
+
+    private savePlayerNameToCookie(name: string): void {
+        // Save for 1 year
+        const expires = new Date();
+        expires.setFullYear(expires.getFullYear() + 1);
+        document.cookie = `playerName=${encodeURIComponent(name)}; expires=${expires.toUTCString()}; path=/`;
+    }
+
+    private showNameInput(): Promise<string> {
+        return new Promise((resolve) => {
+            const savedName = this.getPlayerNameFromCookie();
+            
+            const modal = document.createElement('div');
+            modal.id = 'name-input-modal';
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: rgba(0, 0, 0, 0.9);
+                z-index: 20000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            `;
+            
+            modal.innerHTML = `
+                <div style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    padding: 40px;
+                    border-radius: 16px;
+                    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+                    max-width: 500px;
+                    width: 90%;
+                    text-align: center;
+                ">
+                    <h1 style="color: white; margin: 0 0 20px 0; font-size: 28px;">Enter Your Name</h1>
+                    <p style="color: rgba(255, 255, 255, 0.9); margin: 0 0 25px 0; font-size: 16px;">
+                        Choose a name to display in the game
+                    </p>
+                    <input 
+                        type="text" 
+                        id="name-input" 
+                        placeholder="Player Name" 
+                        maxlength="20"
+                        value="${savedName || ''}"
+                        style="
+                            width: 100%;
+                            padding: 15px;
+                            font-size: 18px;
+                            border: 2px solid rgba(255, 255, 255, 0.3);
+                            border-radius: 8px;
+                            background: rgba(255, 255, 255, 0.95);
+                            color: #333;
+                            box-sizing: border-box;
+                            margin-bottom: 20px;
+                            outline: none;
+                            transition: border-color 0.3s;
+                        "
+                        onfocus="this.style.borderColor='rgba(255, 255, 255, 0.8)'"
+                        onblur="this.style.borderColor='rgba(255, 255, 255, 0.3)'"
+                    />
+                    <button 
+                        id="name-submit-btn"
+                        style="
+                            width: 100%;
+                            padding: 15px;
+                            font-size: 18px;
+                            font-weight: 600;
+                            background: white;
+                            color: #667eea;
+                            border: none;
+                            border-radius: 8px;
+                            cursor: pointer;
+                            transition: transform 0.2s, box-shadow 0.2s;
+                        "
+                        onmouseover="this.style.transform='scale(1.02)'; this.style.boxShadow='0 5px 15px rgba(0, 0, 0, 0.3)'"
+                        onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none'"
+                    >
+                        Start Game
+                    </button>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            const input = document.getElementById('name-input') as HTMLInputElement;
+            const submitBtn = document.getElementById('name-submit-btn') as HTMLButtonElement;
+            
+            const submitName = () => {
+                let name = input.value.trim();
+                if (!name) {
+                    name = 'Player';
+                }
+                // Sanitize name (remove special characters, limit length)
+                name = name.substring(0, 20).replace(/[<>]/g, '');
+                if (!name) {
+                    name = 'Player';
+                }
+                modal.remove();
+                resolve(name);
+            };
+            
+            submitBtn.addEventListener('click', submitName);
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    submitName();
+                }
+            });
+            
+            // Focus input
+            setTimeout(() => input.focus(), 100);
+        });
     }
     
     private setupHealthUI(): void {

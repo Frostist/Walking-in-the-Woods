@@ -38,6 +38,9 @@ export class PlayerController {
     private thirdPersonDistance: number = 5.0; // Distance behind character
     private thirdPersonHeight: number = 2.5; // Height above character
     private cameraRotationX: number = -0.3; // Look down angle in third person
+    
+    // Controls enabled flag
+    private controlsEnabled: boolean = false;
 
     constructor(camera: THREE.PerspectiveCamera, domElement: HTMLElement) {
         this.camera = camera;
@@ -56,6 +59,7 @@ export class PlayerController {
     private setupEventListeners(): void {
         // Pointer lock for mouse look
         this.domElement.addEventListener('click', () => {
+            if (!this.controlsEnabled) return;
             if (!this.isPointerLocked) {
                 this.domElement.requestPointerLock();
             }
@@ -70,6 +74,8 @@ export class PlayerController {
 
         // Keyboard
         document.addEventListener('keydown', (e) => {
+            if (!this.controlsEnabled) return;
+            
             this.keys[e.code] = true;
             
             // Toggle camera mode with 'V' key (only once per press)
@@ -84,6 +90,8 @@ export class PlayerController {
         });
         
         document.addEventListener('keyup', (e) => {
+            if (!this.controlsEnabled) return;
+            
             this.keys[e.code] = false;
             if (e.code === 'KeyV') {
                 this.vKeyJustPressed = false;
@@ -92,6 +100,8 @@ export class PlayerController {
         
         // Jump with Space key
         document.addEventListener('keydown', (e) => {
+            if (!this.controlsEnabled) return;
+            
             if (e.code === 'Space' && this.isGrounded) {
                 e.preventDefault();
                 this.verticalVelocity = this.jumpSpeed;
@@ -101,7 +111,7 @@ export class PlayerController {
     }
 
     private onMouseMove(event: MouseEvent): void {
-        if (!this.isPointerLocked) return;
+        if (!this.controlsEnabled || !this.isPointerLocked) return;
 
         const movementX = event.movementX || 0;
         const movementY = event.movementY || 0;
@@ -123,7 +133,24 @@ export class PlayerController {
         }
     }
 
+    public enableControls(): void {
+        this.controlsEnabled = true;
+    }
+    
+    public disableControls(): void {
+        this.controlsEnabled = false;
+        // Clear all key states when disabling
+        this.keys = {};
+    }
+    
     public update(deltaTime: number): void {
+        // Don't update if controls are disabled
+        if (!this.controlsEnabled) {
+            // Still update camera position to prevent issues
+            this.camera.position.copy(this.position);
+            return;
+        }
+        
         // Convert deltaTime from milliseconds to seconds
         const deltaSeconds = deltaTime / 1000;
 
