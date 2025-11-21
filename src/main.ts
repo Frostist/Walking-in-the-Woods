@@ -1,12 +1,5 @@
 import { Game } from './game/Game';
 
-// Handle unhandled promise rejections globally
-window.addEventListener('unhandledrejection', (event) => {
-    console.error('Unhandled promise rejection:', event.reason);
-    // Prevent the error from appearing in console as unhandled
-    event.preventDefault();
-});
-
 // Detect mobile device
 function detectMobile(): boolean {
     // Check for touch capability

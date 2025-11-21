@@ -249,8 +249,7 @@ export class Player2Character {
                 this.gun.layers.set(0);
             }
         } catch (error) {
-            // Log error but don't throw - gun loading errors are not critical for gameplay
-            console.warn('Failed to load gun model for remote player (non-critical):', error instanceof Error ? error.message : error);
+            // Silently fail - gun loading errors are not critical
         }
     }
     
