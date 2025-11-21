@@ -31,6 +31,14 @@ export interface GrassData {
     scaleZ: number;
 }
 
+export interface BulletData {
+    id: string;
+    shooterId: string;
+    position: { x: number; y: number; z: number };
+    direction: { x: number; y: number; z: number };
+    timestamp: number;
+}
+
 export enum ConnectionStatus {
     DISCONNECTED = 'disconnected',  // Red - Not connected at all
     CONNECTING = 'connecting',        // Yellow - Trying to connect
@@ -55,6 +63,8 @@ export class NetworkManager {
     private grass: GrassData[] = [];
     private grassReceived: boolean = false;
     private onGrassReceivedCallback: ((grass: GrassData[]) => void) | null = null;
+    private onBulletReceivedCallback: ((bullet: BulletData) => void) | null = null;
+    private onPlayerDamagedCallback: ((playerId: string, damage: number) => void) | null = null;
 
     constructor(serverUrl: string = 'http://localhost:3001') {
         this.serverUrl = serverUrl;
@@ -169,6 +179,20 @@ export class NetworkManager {
             this.grassReceived = true;
             if (this.onGrassReceivedCallback) {
                 this.onGrassReceivedCallback(grassData);
+            }
+        });
+
+        // Handle bullet creation from other players
+        this.socket.on('bulletShot', (bulletData: BulletData) => {
+            if (this.onBulletReceivedCallback) {
+                this.onBulletReceivedCallback(bulletData);
+            }
+        });
+
+        // Handle player damage events
+        this.socket.on('playerDamaged', (data: { playerId: string; damage: number }) => {
+            if (this.onPlayerDamagedCallback) {
+                this.onPlayerDamagedCallback(data.playerId, data.damage);
             }
         });
     }
@@ -307,6 +331,61 @@ export class NetworkManager {
         if (this.grassReceived) {
             callback(this.grass);
         }
+    }
+
+    /**
+     * Send bullet shot event to server
+     */
+    public sendBulletShot(position: THREE.Vector3, direction: THREE.Vector3): void {
+        if (!this.socket || !this.isConnected || !this.socket.id) {
+            return;
+        }
+
+        const bulletData: BulletData = {
+            id: `${this.socket.id}-${Date.now()}-${Math.random()}`,
+            shooterId: this.socket.id,
+            position: {
+                x: position.x,
+                y: position.y,
+                z: position.z
+            },
+            direction: {
+                x: direction.x,
+                y: direction.y,
+                z: direction.z
+            },
+            timestamp: Date.now()
+        };
+
+        this.socket.emit('bulletShot', bulletData);
+    }
+
+    /**
+     * Set callback to be called when a bullet is received from another player
+     */
+    public onBulletReceived(callback: (bullet: BulletData) => void): void {
+        this.onBulletReceivedCallback = callback;
+    }
+
+    /**
+     * Send player damage event to server
+     */
+    public sendPlayerDamaged(targetPlayerId: string, damage: number): void {
+        if (!this.socket || !this.isConnected) {
+            return;
+        }
+
+        this.socket.emit('playerDamaged', {
+            targetPlayerId: targetPlayerId,
+            damage: damage
+        });
+    }
+
+    /**
+     * Set callback to be called when a player takes damage
+     */
+    public onPlayerDamaged(callback: (playerId: string, damage: number) => void): void {
+        this.onPlayerDamagedCallback = callback;
     }
 }
 

@@ -165,6 +165,21 @@ io.on('connection', (socket) => {
             });
         }
     });
+
+    // Handle bullet shot events
+    socket.on('bulletShot', (bulletData: { id: string; shooterId: string; position: { x: number; y: number; z: number }; direction: { x: number; y: number; z: number }; timestamp: number }) => {
+        // Broadcast bullet to all other players
+        socket.broadcast.emit('bulletShot', bulletData);
+    });
+
+    // Handle player damage events
+    socket.on('playerDamaged', (data: { targetPlayerId: string; damage: number }) => {
+        // Broadcast damage event to all players (including the damaged player for synchronization)
+        io.emit('playerDamaged', {
+            playerId: data.targetPlayerId,
+            damage: data.damage
+        });
+    });
     
     // Handle player disconnect
     socket.on('disconnect', () => {

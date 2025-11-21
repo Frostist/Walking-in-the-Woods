@@ -61,6 +61,10 @@ export class Game {
     }
 
     public async init(): Promise<void> {
+        // Show loading screen
+        this.showLoadingScreen();
+        this.updateLoadingProgress(10, 'Setting up scene...');
+        
         // Append canvas to container
         const container = document.getElementById('canvas-container');
         if (container) {
@@ -69,9 +73,11 @@ export class Game {
 
         // Setup scene
         this.sceneManager.setup();
+        this.updateLoadingProgress(20, 'Loading character...');
 
         // Load gun for local character
         await this.character.loadGun();
+        this.updateLoadingProgress(40, 'Connecting to server...');
 
         // Connect to multiplayer server
         this.networkManager.connect();
@@ -80,12 +86,49 @@ export class Game {
         this.networkManager.onTreesReceived((trees) => {
             console.log(`Generating ${trees.length} trees from server data`);
             this.sceneManager.generateTreesFromServerData(trees);
+            this.updateLoadingProgress(70, 'Loading trees...');
         });
 
         // Setup callback to generate grass when received from server
         this.networkManager.onGrassReceived((grass) => {
             console.log(`Generating ${grass.length} grass patches from server data`);
             this.sceneManager.generateGrassFromServerData(grass);
+            this.updateLoadingProgress(90, 'Loading grass...');
+        });
+
+        // Setup callback for bullets from other players
+        this.networkManager.onBulletReceived((bulletData) => {
+            // Don't create bullet if it's from local player (we already created it)
+            const localPlayerId = this.networkManager.getPlayerId();
+            if (bulletData.shooterId !== localPlayerId) {
+                const position = new THREE.Vector3(
+                    bulletData.position.x,
+                    bulletData.position.y,
+                    bulletData.position.z
+                );
+                const direction = new THREE.Vector3(
+                    bulletData.direction.x,
+                    bulletData.direction.y,
+                    bulletData.direction.z
+                );
+                const bullet = new Bullet(this.scene, position, direction, bulletData.shooterId);
+                this.bullets.push(bullet);
+            }
+        });
+
+        // Setup callback for player damage events
+        this.networkManager.onPlayerDamaged((playerId, damage) => {
+            const localPlayerId = this.networkManager.getPlayerId();
+            if (playerId === localPlayerId) {
+                // Local player took damage
+                this.character.takeDamage(damage);
+            } else {
+                // Remote player took damage
+                const remotePlayer = this.remotePlayers.get(playerId);
+                if (remotePlayer) {
+                    remotePlayer.takeDamage(damage);
+                }
+            }
         });
 
         // Setup event listeners
@@ -96,9 +139,77 @@ export class Game {
         
         // Setup health UI
         this.setupHealthUI();
+        
+        // Wait a bit for everything to settle, then hide loading screen
+        setTimeout(() => {
+            this.updateLoadingProgress(100, 'Ready!');
+            setTimeout(() => {
+                this.hideLoadingScreen();
+            }, 500);
+        }, 1000);
 
         // Start game loop
         this.gameLoop(0);
+    }
+    
+    private showLoadingScreen(): void {
+        const loadingScreen = document.createElement('div');
+        loadingScreen.id = 'loading-screen';
+        loadingScreen.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #000;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        `;
+        
+        loadingScreen.innerHTML = `
+            <h1 style="margin-bottom: 30px; font-size: 32px;">Loading Game...</h1>
+            <div id="loading-bar-container" style="width: 400px; height: 30px; background: rgba(255, 255, 255, 0.2); border-radius: 15px; overflow: hidden; margin-bottom: 15px;">
+                <div id="loading-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #4CAF50, #45a049); transition: width 0.3s ease; border-radius: 15px;"></div>
+            </div>
+            <div id="loading-status" style="font-size: 16px; color: #ccc;">Initializing...</div>
+            <div id="loading-percentage" style="margin-top: 10px; font-size: 14px; color: #999;">0%</div>
+        `;
+        
+        document.body.appendChild(loadingScreen);
+    }
+    
+    private updateLoadingProgress(percentage: number, status: string): void {
+        const loadingBar = document.getElementById('loading-bar');
+        const loadingStatusEl = document.getElementById('loading-status');
+        const loadingPercentage = document.getElementById('loading-percentage');
+        
+        if (loadingBar) {
+            loadingBar.style.width = `${percentage}%`;
+        }
+        if (loadingStatusEl) {
+            loadingStatusEl.textContent = status;
+        }
+        if (loadingPercentage) {
+            loadingPercentage.textContent = `${Math.round(percentage)}%`;
+        }
+    }
+    
+    private hideLoadingScreen(): void {
+        const loadingScreen = document.getElementById('loading-screen');
+        if (loadingScreen) {
+            loadingScreen.style.transition = 'opacity 0.5s ease';
+            loadingScreen.style.opacity = '0';
+            setTimeout(() => {
+                if (loadingScreen.parentNode) {
+                    loadingScreen.parentNode.removeChild(loadingScreen);
+                }
+            }, 500);
+        }
     }
     
     private setupHealthUI(): void {
@@ -247,6 +358,9 @@ export class Game {
         // Create bullet at spawn node position, shooting in camera direction
         const bullet = new Bullet(this.scene, spawnNode.position, direction, localPlayerId);
         this.bullets.push(bullet);
+        
+        // Send bullet to server so other players can see it
+        this.networkManager.sendBulletShot(spawnNode.position, direction);
     }
 
     private onWindowResize(): void {
@@ -347,34 +461,36 @@ export class Game {
                     // Additional check: make sure bullet is at reasonable height (not too high/low)
                     const heightDiff = Math.abs(bulletPos.y - characterWorldPos.y);
                     if (heightDiff < 2.0) {
-                        this.character.takeDamage(1);
+                        // Remote bullet hit local player - notify server (server will broadcast damage)
+                        if (localPlayerId) {
+                            this.networkManager.sendPlayerDamaged(localPlayerId, 1);
+                        }
                         bullet.dispose();
                         return false;
                     }
                 }
             }
             
-            // Check collision with remote players
-            for (const [id, remotePlayer] of this.remotePlayers.entries()) {
-                if (bullet.getShooterId() === id) {
-                    continue; // Can't hit yourself
-                }
-                
-                const remotePlayerMesh = remotePlayer.getCharacter().getMesh();
-                const remotePlayerWorldPos = new THREE.Vector3();
-                remotePlayerMesh.getWorldPosition(remotePlayerWorldPos);
-                
-                const bulletPos = bullet.getPosition();
-                const distance = bulletPos.distanceTo(remotePlayerWorldPos);
-                
-                // Check if bullet is close to remote player character
-                if (distance < 0.6) {
-                    // Additional check: make sure bullet is at reasonable height
-                    const heightDiff = Math.abs(bulletPos.y - remotePlayerWorldPos.y);
-                    if (heightDiff < 2.0) {
-                        remotePlayer.takeDamage(1);
-                        bullet.dispose();
-                        return false;
+            // Check collision with remote players (only if we shot the bullet)
+            if (bullet.getShooterId() === localPlayerId) {
+                for (const [id, remotePlayer] of this.remotePlayers.entries()) {
+                    const remotePlayerMesh = remotePlayer.getCharacter().getMesh();
+                    const remotePlayerWorldPos = new THREE.Vector3();
+                    remotePlayerMesh.getWorldPosition(remotePlayerWorldPos);
+                    
+                    const bulletPos = bullet.getPosition();
+                    const distance = bulletPos.distanceTo(remotePlayerWorldPos);
+                    
+                    // Check if bullet is close to remote player character
+                    if (distance < 0.6) {
+                        // Additional check: make sure bullet is at reasonable height
+                        const heightDiff = Math.abs(bulletPos.y - remotePlayerWorldPos.y);
+                        if (heightDiff < 2.0) {
+                            // Local bullet hit remote player - notify server (server will broadcast damage)
+                            this.networkManager.sendPlayerDamaged(id, 1);
+                            bullet.dispose();
+                            return false;
+                        }
                     }
                 }
             }
