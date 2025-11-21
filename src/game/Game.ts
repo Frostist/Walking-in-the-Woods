@@ -126,6 +126,12 @@ export class Game {
             this.savePlayerIdToCookie(playerId);
         });
 
+        // Setup callback to save registered player name when confirmed by server
+        this.networkManager.setOnPlayerNameConfirmed((playerName) => {
+            // Update cookie with the registered name (may have been modified by server if original was taken)
+            this.savePlayerNameToCookie(playerName);
+        });
+
         // Setup callback to generate trees when received from server
         this.networkManager.onTreesReceived((trees) => {
             this.sceneManager.generateTreesFromServerData(trees);

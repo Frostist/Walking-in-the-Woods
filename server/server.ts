@@ -226,22 +226,53 @@ io.on('connection', (socket) => {
                     storedPlayerId = data.storedPlayerId || null;
                 }
                 
-                // If we have a stored player ID, use it for database operations
-                if (storedPlayerId) {
-                    socketToPlayerId.set(socket.id, storedPlayerId);
-                    console.log(`Player ${socket.id} reusing stored player ID: ${storedPlayerId}`);
-                }
-                
-                const effectivePlayerId = getEffectivePlayerId(socket.id);
-                
                 // Sanitize name
                 const sanitizedName = (playerName || 'Player').substring(0, 20).replace(/[<>]/g, '') || 'Player';
                 
+                // Track if we need to migrate kills (if socket.id differs from effective player_id)
+                const currentSocketId = socket.id;
+                let effectivePlayerId = currentSocketId;
+                
+                // If we have a stored player ID, use it for database operations
+                if (storedPlayerId) {
+                    socketToPlayerId.set(socket.id, storedPlayerId);
+                    effectivePlayerId = storedPlayerId;
+                    console.log(`Player ${socket.id} reusing stored player ID: ${storedPlayerId}`);
+                } else if (sanitizedName && sanitizedName !== 'Player') {
+                    // If no stored player ID but we have a username, try to find existing player_id by username
+                    const existingPlayerId = await dbManager.getPlayerIdByName(sanitizedName);
+                    if (existingPlayerId) {
+                        socketToPlayerId.set(socket.id, existingPlayerId);
+                        effectivePlayerId = existingPlayerId;
+                        console.log(`Player ${socket.id} found existing player ID ${existingPlayerId} for username: ${sanitizedName}`);
+                        
+                        // Migrate any kills from the current socket.id to the effective player_id
+                        // This ensures all kills for this username are consolidated
+                        if (currentSocketId !== existingPlayerId) {
+                            await dbManager.migrateKills(currentSocketId, existingPlayerId);
+                        }
+                        
+                        // Also migrate kills from any other player_ids that have this same name
+                        // This handles edge cases where there might be multiple player_ids with the same name
+                        await dbManager.migrateKillsByPlayerName(sanitizedName, existingPlayerId);
+                    }
+                }
+                
                 // Register name in database using effective player ID (will handle uniqueness)
+                // This will update the player_id if it changed, or create a new entry
                 const registeredName = await dbManager.registerPlayerName(effectivePlayerId, sanitizedName);
                 player.name = registeredName;
                 
+                // Update last_seen timestamp
+                await dbManager.updatePlayerLastSeen(effectivePlayerId);
+                
                 console.log(`Player ${socket.id} (effective ID: ${effectivePlayerId}) set name to: ${registeredName}${registeredName !== sanitizedName ? ` (original: ${sanitizedName} was taken)` : ''}`);
+                
+                // Send the effective player ID and registered name back to the client so it can update its cookies
+                socket.emit('playerIdConfirmed', {
+                    playerId: effectivePlayerId,
+                    playerName: registeredName
+                });
                 
                 // Broadcast updated player info to all clients
                 io.emit('playerUpdate', {

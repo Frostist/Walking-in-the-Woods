@@ -86,6 +86,7 @@ export class NetworkManager {
     private playerName: string = 'Player';
     private storedPlayerId: string | null = null;
     private onPlayerIdReceivedCallback: ((playerId: string) => void) | null = null;
+    private onPlayerNameConfirmedCallback: ((playerName: string) => void) | null = null;
 
     constructor(serverUrl: string = 'http://localhost:3001') {
         this.serverUrl = serverUrl;
@@ -109,6 +110,10 @@ export class NetworkManager {
 
     public setOnPlayerIdReceived(callback: (playerId: string) => void): void {
         this.onPlayerIdReceivedCallback = callback;
+    }
+
+    public setOnPlayerNameConfirmed(callback: (playerName: string) => void): void {
+        this.onPlayerNameConfirmedCallback = callback;
     }
 
     public connect(): void {
@@ -139,10 +144,19 @@ export class NetworkManager {
                     name: this.playerName,
                     storedPlayerId: this.storedPlayerId
                 });
-                // Store the new socket.id as the player ID
-                if (this.socket.id) {
-                    this.storePlayerId(this.socket.id);
-                }
+            }
+        });
+
+        // Handle server confirmation of player ID and name (may be different from socket.id if found by username)
+        this.socket.on('playerIdConfirmed', (data: { playerId: string; playerName: string }) => {
+            // Store the effective player ID from server (may be found by username lookup)
+            this.storePlayerId(data.playerId);
+            this.setStoredPlayerId(data.playerId);
+            // Update player name with the registered name (may have been modified by server)
+            this.playerName = data.playerName;
+            // Notify callback to update cookie with registered name
+            if (this.onPlayerNameConfirmedCallback) {
+                this.onPlayerNameConfirmedCallback(data.playerName);
             }
         });
 

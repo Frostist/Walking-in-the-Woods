@@ -101,20 +101,75 @@ export class DatabaseManager {
     }
 
     /**
+     * Migrate kills from old player_id to new player_id
+     * Used when a player reconnects and we need to consolidate their kills
+     */
+    public async migrateKills(oldPlayerId: string, newPlayerId: string): Promise<void> {
+        try {
+            // Only migrate if the IDs are different
+            if (oldPlayerId === newPlayerId) {
+                return;
+            }
+
+            // Update all kills from old player_id to new player_id
+            const result = await this.pool.query(
+                'UPDATE kills SET player_id = $1 WHERE player_id = $2',
+                [newPlayerId, oldPlayerId]
+            );
+            
+            if (result.rowCount && result.rowCount > 0) {
+                console.log(`Migrated ${result.rowCount} kill(s) from player_id ${oldPlayerId} to ${newPlayerId}`);
+            }
+        } catch (error) {
+            console.error('Error migrating kills:', error);
+            // Don't throw - allow game to continue even if migration fails
+        }
+    }
+
+    /**
+     * Migrate all kills from any player_ids that have the same player_name to the target player_id
+     * This consolidates kills when a player reconnects with a username
+     */
+    public async migrateKillsByPlayerName(playerName: string, targetPlayerId: string): Promise<void> {
+        try {
+            // Find all player_ids that have this player_name (except the target)
+            const result = await this.pool.query(
+                `SELECT player_id FROM player_names 
+                 WHERE player_name = $1 AND player_id != $2`,
+                [playerName, targetPlayerId]
+            );
+
+            // Migrate kills from each found player_id to the target
+            for (const row of result.rows) {
+                const oldPlayerId = row.player_id;
+                await this.migrateKills(oldPlayerId, targetPlayerId);
+                
+                // Optionally, we could delete the old player_name entry, but we'll keep it
+                // in case there are other references. The leaderboard groups by name anyway.
+            }
+        } catch (error) {
+            console.error('Error migrating kills by player name:', error);
+            // Don't throw - allow game to continue even if migration fails
+        }
+    }
+
+    /**
      * Get leaderboard with total kills (players + monsters combined)
+     * Groups by player_name to prevent duplicates and ensure one entry per username
      */
     public async getLeaderboard(limit: number = 10): Promise<LeaderboardEntry[]> {
         try {
             const result = await this.pool.query(`
                 SELECT 
-                    k.player_id,
-                    COALESCE(pn.player_name, k.player_id) as player_name,
+                    MAX(pn.player_id) as player_id,
+                    pn.player_name,
                     COUNT(*) as total_kills,
                     COUNT(*) FILTER (WHERE k.kill_type = 'player') as player_kills,
                     COUNT(*) FILTER (WHERE k.kill_type = 'monster') as monster_kills
                 FROM kills k
-                LEFT JOIN player_names pn ON k.player_id = pn.player_id
-                GROUP BY k.player_id, pn.player_name
+                INNER JOIN player_names pn ON k.player_id = pn.player_id
+                WHERE pn.player_name IS NOT NULL
+                GROUP BY pn.player_name
                 ORDER BY total_kills DESC
                 LIMIT $1
             `, [limit]);
@@ -273,6 +328,27 @@ export class DatabaseManager {
             return result.rows[0].player_name;
         } catch (error) {
             console.error('Error getting player name:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Get player ID by player name (username)
+     */
+    public async getPlayerIdByName(playerName: string): Promise<string | null> {
+        try {
+            const result = await this.pool.query(
+                'SELECT player_id FROM player_names WHERE LOWER(player_name) = LOWER($1)',
+                [playerName]
+            );
+            
+            if (result.rows.length === 0) {
+                return null;
+            }
+            
+            return result.rows[0].player_id;
+        } catch (error) {
+            console.error('Error getting player ID by name:', error);
             return null;
         }
     }

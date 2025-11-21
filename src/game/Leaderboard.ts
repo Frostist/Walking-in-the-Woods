@@ -178,11 +178,9 @@ export class Leaderboard {
             leaderboard.forEach((entry, index) => {
                 const rank = index + 1;
                 const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
-                // Use player_name if available, otherwise fall back to shortened player_id
-                const playerDisplay = entry.player_name || 
-                    (entry.player_id.length > 12 
-                        ? entry.player_id.substring(0, 12) + '...' 
-                        : entry.player_id);
+                // Always use player_name (should always be present due to server query filtering)
+                // Fallback to "Unknown Player" if somehow missing (shouldn't happen)
+                const playerDisplay = entry.player_name || 'Unknown Player';
 
                 html += `
                     <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
