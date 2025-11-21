@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { generateTrees, TreeData, generateGrass, GrassData } from './TreeGenerator.js';
@@ -7,6 +8,13 @@ import { DatabaseManager } from './DatabaseManager.js';
 
 const app = express();
 const httpServer = createServer(app);
+
+// Configure CORS for Express API endpoints
+app.use(cors({
+    origin: "*", // Allow all origins (or specify your client URL in production)
+    methods: ["GET", "POST", "OPTIONS"],
+    credentials: true
+}));
 const io = new Server(httpServer, {
     cors: {
         origin: "*", // In production, specify your client URL
