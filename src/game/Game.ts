@@ -7,6 +7,7 @@ import { RemotePlayer } from './RemotePlayer';
 import { Bullet } from './Bullet';
 import { BlockManager } from './BlockManager';
 import { Leaderboard } from './Leaderboard';
+import { UpdateNotifier } from './UpdateNotifier';
 
 export class Game {
     private scene: THREE.Scene;
@@ -21,6 +22,7 @@ export class Game {
     private blockManager: BlockManager;
     private raycaster: THREE.Raycaster;
     private leaderboard: Leaderboard;
+    private updateNotifier: UpdateNotifier;
     private animationId: number = 0;
     private lastTime: number = 0;
     private lastStatusUpdate: number = 0;
@@ -72,8 +74,8 @@ export class Game {
         // Initialize leaderboard
         this.leaderboard = new Leaderboard(serverUrl);
         
-        // Initialize leaderboard
-        this.leaderboard = new Leaderboard(serverUrl);
+        // Initialize update notifier
+        this.updateNotifier = new UpdateNotifier();
     }
 
     public async init(): Promise<void> {
@@ -1004,6 +1006,9 @@ export class Game {
         
         // Dispose leaderboard
         this.leaderboard.dispose();
+        
+        // Dispose update notifier
+        this.updateNotifier.dispose();
         
         this.sceneManager.dispose();
         this.renderer.dispose();
