@@ -1,0 +1,11 @@
+{
+  "Azelor": {
+    "color": "#ff7a00",
+    "slots": ["weapon", "passive"]
+  },
+  "Velune": {
+    "color": "#21c48d",
+    "slots": ["defense", "utility"]
+  }
+}
+

@@ -1,34 +1,31 @@
-# Game Test - Three.js Project
+# Glock Wizards - 3D Web MVP
 
-A modern game development project using TypeScript and Three.js, optimized for AI-assisted development in Cursor.
+A wave-based survival game built with Three.js and TypeScript.
 
 ## Features
 
-- **TypeScript** - Type-safe development with excellent IDE support
-- **Three.js** - Powerful 3D graphics library
-- **Vite** - Fast development server and build tool
-- **Modern ES Modules** - Clean, modular code structure
-- **Camera Controls** - Interactive mouse-controlled camera
-- **Example Scene** - Pre-configured 3D scene with lighting and objects
+- **Wave System**: Survive waves of enemies with increasing difficulty
+- **Downtime & Shrines**: 25-second downtime between waves to visit shrines and pick boons
+- **Two Deities**: Azelor (Fire/Offense) and Velune (Team/Mycelium)
+- **Currency System**: Essence (common) and Fairy Dust (rare)
+- **Enemy Types**: Sporeling (melee), Stalker (ranged), and Bulwark (mini-boss)
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js (v18 or higher recommended)
-- npm or yarn
+- Node.js (v18 or higher)
+- npm
 
 ### Installation
 
 ```bash
-# Install dependencies
 npm install
 ```
 
 ### Development
 
 ```bash
-# Start development server
 npm run dev
 ```
 
@@ -37,65 +34,77 @@ The game will open automatically in your browser at `http://localhost:3000`
 ### Build
 
 ```bash
-# Build for production
 npm run build
 ```
 
-### Preview Production Build
+## Controls
 
-```bash
-# Preview the production build
-npm run preview
-```
+- **Click** - Lock mouse pointer
+- **WASD** - Move
+- **Space** - Jump
+- **Shift** - Dash
+- **LMB** - Fire weapon
+- **RMB** - Spell (Arc Burst)
+- **R** - Reload
+- **F** - Interact (Shrine/Forge/Portal)
+- **Tab** - Toggle metrics
+- **ESC** - Release mouse pointer
 
 ## Project Structure
 
 ```
 game-test/
 ├── src/
+│   ├── app/
+│   │   ├── App.ts           # Main game orchestrator
+│   │   └── EventBus.ts      # Event system
+│   ├── core/
+│   │   ├── CameraRig.ts     # FPS camera controls
+│   │   ├── Effects.ts       # Visual effects
+│   │   ├── Health.ts        # Health/shield system
+│   │   ├── Input.ts         # Input handling
+│   │   ├── RNG.ts           # Seeded random number generator
+│   │   └── Time.ts          # Fixed-step time system
 │   ├── game/
-│   │   ├── Game.ts          # Main game class
-│   │   ├── CameraController.ts  # Camera controls
-│   │   └── SceneManager.ts  # Scene setup and management
+│   │   ├── Economy.ts       # Currency management
+│   │   ├── Enemy.ts         # Enemy base class
+│   │   ├── GameState.ts     # Game state machine
+│   │   ├── Player.ts        # Player controller
+│   │   ├── ShrineManager.ts # Shrine and boon system
+│   │   ├── SpawnManager.ts  # Enemy spawning
+│   │   ├── UI.ts            # HUD and UI overlays
+│   │   ├── WaveManager.ts   # Wave progression
+│   │   ├── Weapon.ts        # Weapon system
+│   │   └── World.ts         # Scene and world setup
 │   └── main.ts              # Entry point
-├── index.html               # HTML template
-├── package.json             # Dependencies and scripts
-├── tsconfig.json            # TypeScript configuration
-└── vite.config.ts          # Vite configuration
+├── config/                  # Game configuration files
+│   ├── enemies.json
+│   ├── waves.json
+│   ├── spawns.json
+│   ├── deities.json
+│   └── boons.json
+└── public/
+    └── config/              # Config files served at runtime
 ```
 
-## Controls
+## Game Loop
 
-- **Mouse Drag** - Rotate camera around the scene
-- **Mouse Wheel** - Zoom in/out
+1. **Wave Start**: Enemies spawn based on wave configuration
+2. **Combat**: Fight enemies, collect Essence and Fairy Dust
+3. **Wave Clear**: All enemies defeated
+4. **Downtime**: 25 seconds to visit shrines and pick boons
+5. **Repeat**: Next wave starts automatically
 
-## Next Steps
+## Configuration
 
-This is a basic starter project. You can now:
+All game balance and content is configurable via JSON files in the `config/` directory:
 
-1. Add game objects and entities
-2. Implement game mechanics
-3. Add physics (consider adding `cannon-es` or `rapier`)
-4. Add UI elements
-5. Implement game states and scenes
-6. Add audio with `howler.js` or similar
-7. Add networking for multiplayer games
-
-## Why This Stack?
-
-- **TypeScript + Three.js**: Excellent AI assistance support in Cursor
-- **Web-based**: Easy to share and deploy, no installation required
-- **Scalable**: Can grow from simple games to complex 3D experiences
-- **Modern**: Uses latest web technologies and best practices
-- **Fast Development**: Hot module replacement with Vite
-
-## Resources
-
-- [Three.js Documentation](https://threejs.org/docs/)
-- [TypeScript Handbook](https://www.typescriptlang.org/docs/)
-- [Vite Guide](https://vitejs.dev/guide/)
+- `enemies.json` - Enemy stats and behaviors
+- `waves.json` - Wave composition and progression
+- `spawns.json` - Spawn point locations
+- `deities.json` - Deity information
+- `boons.json` - Available boons and their effects
 
 ## License
 
 MIT
-

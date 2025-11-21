@@ -1,0 +1,28 @@
+{
+  "sporeling": {
+    "hp": 40,
+    "dmg": 6,
+    "speed": 2.2,
+    "cost": 1,
+    "ai": "melee"
+  },
+  "stalker": {
+    "hp": 35,
+    "dmg": 4,
+    "speed": 2.0,
+    "cost": 2,
+    "ai": "ranged",
+    "proj": {
+      "speed": 8,
+      "cooldown": 1.4
+    }
+  },
+  "bulwark": {
+    "hp": 600,
+    "dmg": 12,
+    "speed": 1.4,
+    "cost": 20,
+    "ai": "miniboss"
+  }
+}
+

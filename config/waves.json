@@ -1,0 +1,40 @@
+{
+  "startIndex": 1,
+  "baseBudget": 20,
+  "budgetPerWave": 12,
+  "maxAliveBase": 6,
+  "maxAlivePerWave": 1.5,
+  "modifierChance": 0.1,
+  "miniBossEvery": [4, 6],
+  "bossThresholds": [10, 15, 20],
+  "waves": [
+    {
+      "index": 1,
+      "composition": [["sporeling", 12]],
+      "maxAlive": 8
+    },
+    {
+      "index": 2,
+      "composition": [["sporeling", 16]],
+      "maxAlive": 10
+    },
+    {
+      "index": 3,
+      "composition": [["sporeling", 16], ["stalker", 6]],
+      "maxAlive": 12
+    },
+    {
+      "index": 4,
+      "composition": [["sporeling", 18], ["stalker", 8]],
+      "maxAlive": 14,
+      "miniboss": false
+    },
+    {
+      "index": 5,
+      "composition": [["sporeling", 20], ["stalker", 10]],
+      "maxAlive": 16,
+      "miniboss": true
+    }
+  ]
+}
+

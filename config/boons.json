@@ -1,0 +1,65 @@
+[
+  {
+    "id": "az_weapon_ignite",
+    "deity": "Azelor",
+    "slot": "weapon",
+    "rarity": "rare",
+    "cost": {
+      "essence": 60
+    },
+    "effect": {
+      "weapon": {
+        "dmg": "+20%",
+        "rpm": "+10%"
+      },
+      "element": "fire"
+    }
+  },
+  {
+    "id": "az_passive_blaze",
+    "deity": "Azelor",
+    "slot": "passive",
+    "rarity": "uncommon",
+    "cost": {
+      "essence": 40
+    },
+    "effect": {
+      "passive": {
+        "killMoveSpeed": "+10%",
+        "dotBoost": "+25%"
+      }
+    }
+  },
+  {
+    "id": "ve_defense_sporeGuard",
+    "deity": "Velune",
+    "slot": "defense",
+    "rarity": "rare",
+    "cost": {
+      "essence": 50
+    },
+    "effect": {
+      "shield": {
+        "max": "+25%",
+        "rechargeRate": "+20%",
+        "rechargeDelay": "-20%"
+      }
+    }
+  },
+  {
+    "id": "ve_utility_threadPulse",
+    "deity": "Velune",
+    "slot": "utility",
+    "rarity": "uncommon",
+    "cost": {
+      "essence": 35
+    },
+    "effect": {
+      "utility": {
+        "reviveShield": "+50",
+        "auraRegen": "+1.5/s"
+      }
+    }
+  }
+]
+
