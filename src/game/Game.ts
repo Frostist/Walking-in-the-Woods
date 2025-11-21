@@ -130,7 +130,7 @@ export class Game {
 
         // Get all remote player IDs
         const remotePlayerIds = new Set<string>();
-        remotePlayerData.forEach((data, id) => {
+        remotePlayerData.forEach((_data, id) => {
             if (id !== localPlayerId) {
                 remotePlayerIds.add(id);
             }
