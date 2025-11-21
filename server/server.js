@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { generateTrees, generateGrass } from './TreeGenerator.js';
+import { MonsterManager } from './MonsterManager.js';
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -87,7 +88,10 @@ app.get('/', (req, res) => {
         </html>
     `);
 });
+// Store connected players
 const players = new Map();
+// Initialize monster manager
+const monsterManager = new MonsterManager(io, players);
 // Generate trees once on server startup - all clients will see the same trees
 const TREE_COUNT = 80;
 const TREE_SPREAD = 60;
@@ -126,6 +130,24 @@ io.on('connection', (socket) => {
     // Send current players to newly connected player
     const allPlayers = Array.from(players.values());
     socket.emit('players', allPlayers);
+    // Send current monster state to newly connected player
+    const monsterState = monsterManager.getMonsterState();
+    socket.emit('monsterUpdate', {
+        position: monsterState.position,
+        rotationY: monsterState.rotationY,
+        health: monsterState.health,
+        maxHealth: monsterState.maxHealth
+    });
+    // Send monster alive status
+    if (monsterState.isAlive) {
+        socket.emit('monsterHealthUpdate', {
+            health: monsterState.health,
+            maxHealth: monsterState.maxHealth
+        });
+    }
+    else {
+        socket.emit('monsterDied');
+    }
     // Notify other players about new player
     socket.broadcast.emit('playerJoined', playerState);
     // Handle player position updates
@@ -142,10 +164,29 @@ io.on('connection', (socket) => {
             });
         }
     });
+    // Handle bullet shot events
+    socket.on('bulletShot', (bulletData) => {
+        // Broadcast bullet to all other players
+        socket.broadcast.emit('bulletShot', bulletData);
+    });
+    // Handle player damage events
+    socket.on('playerDamaged', (data) => {
+        // Broadcast damage event to all players (including the damaged player for synchronization)
+        io.emit('playerDamaged', {
+            playerId: data.targetPlayerId,
+            damage: data.damage
+        });
+    });
+    // Handle monster damage events
+    socket.on('monsterDamaged', (data) => {
+        monsterManager.damageMonster(data.damage);
+    });
     // Handle player disconnect
     socket.on('disconnect', () => {
         console.log(`Player disconnected: ${socket.id}`);
         players.delete(socket.id);
+        // Clean up attack cooldown for this player
+        monsterManager.cleanupPlayerCooldown(socket.id);
         // Notify other players
         io.emit('playerLeft', socket.id);
     });

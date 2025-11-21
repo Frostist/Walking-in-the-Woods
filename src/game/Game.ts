@@ -131,6 +131,26 @@ export class Game {
             }
         });
 
+        // Setup callback for monster updates from server
+        this.networkManager.onMonsterUpdate((position, rotationY, health, maxHealth) => {
+            this.sceneManager.updateMonsterFromServer(position, rotationY, health, maxHealth);
+        });
+
+        // Setup callback for monster death
+        this.networkManager.onMonsterDied(() => {
+            this.sceneManager.handleMonsterDeath();
+        });
+
+        // Setup callback for monster respawn
+        this.networkManager.onMonsterRespawned((position, rotationY, health, maxHealth) => {
+            this.sceneManager.handleMonsterRespawn(position, rotationY, health, maxHealth);
+        });
+
+        // Setup callback for monster health updates
+        this.networkManager.onMonsterHealthUpdate((health, maxHealth) => {
+            this.sceneManager.updateMonsterHealth(health, maxHealth);
+        });
+
         // Setup event listeners
         this.setupEventListeners();
 
@@ -453,9 +473,6 @@ export class Game {
 
         // Update scene manager with server time (falls back to local time if server time unavailable)
         this.sceneManager.update(deltaTime, currentPlayerPosition, serverGameTime);
-
-        // Update monster with player position
-        this.sceneManager.updateMonster(deltaTime, currentPlayerPosition);
         
         // Update bullets
         this.updateBullets(deltaTime);
@@ -498,6 +515,15 @@ export class Game {
                         return false;
                     }
                 }
+                
+                // Check collision with monster (only if we shot the bullet)
+                const monsterMesh = this.sceneManager.getMonsterMesh();
+                if (monsterMesh && this.checkBulletMonsterCollision(bullet, monsterMesh)) {
+                    // Local bullet hit monster - notify server (server will handle damage and death)
+                    this.networkManager.sendMonsterDamaged(1);
+                    bullet.dispose();
+                    return false;
+                }
             }
             
             return true;
@@ -533,6 +559,48 @@ export class Game {
         
         // Check each mesh for intersection
         // Use recursive traversal to check all meshes including nested ones (like gun parts)
+        for (const mesh of meshesToCheck) {
+            const intersects = raycaster.intersectObject(mesh, true); // true = recursive, check children too
+            if (intersects.length > 0) {
+                const intersection = intersects[0];
+                // Check if intersection is within the bullet's movement distance
+                if (intersection.distance <= distance + 0.1) { // Small buffer for bullet radius
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+
+    /**
+     * Check if a bullet collides with the monster mesh using raycasting
+     */
+    private checkBulletMonsterCollision(bullet: Bullet, monsterMesh: THREE.Group): boolean {
+        const bulletPos = bullet.getPosition();
+        const bulletPrevPos = bullet.getPreviousPosition();
+        
+        // Create raycaster from previous position to current position
+        const direction = bulletPos.clone().sub(bulletPrevPos).normalize();
+        const distance = bulletPrevPos.distanceTo(bulletPos);
+        
+        // If bullet hasn't moved, skip collision check
+        if (distance < 0.001) {
+            return false;
+        }
+        
+        const raycaster = new THREE.Raycaster();
+        raycaster.set(bulletPrevPos, direction);
+        
+        // Check intersection with all meshes in the monster model
+        const meshesToCheck: THREE.Mesh[] = [];
+        monsterMesh.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+                meshesToCheck.push(child);
+            }
+        });
+        
+        // Check each mesh for intersection
         for (const mesh of meshesToCheck) {
             const intersects = raycaster.intersectObject(mesh, true); // true = recursive, check children too
             if (intersects.length > 0) {

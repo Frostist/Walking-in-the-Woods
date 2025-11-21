@@ -65,6 +65,10 @@ export class NetworkManager {
     private onGrassReceivedCallback: ((grass: GrassData[]) => void) | null = null;
     private onBulletReceivedCallback: ((bullet: BulletData) => void) | null = null;
     private onPlayerDamagedCallback: ((playerId: string, damage: number) => void) | null = null;
+    private onMonsterUpdateCallback: ((position: { x: number; y: number; z: number }, rotationY: number, health: number, maxHealth: number) => void) | null = null;
+    private onMonsterDiedCallback: (() => void) | null = null;
+    private onMonsterRespawnedCallback: ((position: { x: number; y: number; z: number }, rotationY: number, health: number, maxHealth: number) => void) | null = null;
+    private onMonsterHealthUpdateCallback: ((health: number, maxHealth: number) => void) | null = null;
 
     constructor(serverUrl: string = 'http://localhost:3001') {
         this.serverUrl = serverUrl;
@@ -179,6 +183,34 @@ export class NetworkManager {
         this.socket.on('playerDamaged', (data: { playerId: string; damage: number }) => {
             if (this.onPlayerDamagedCallback) {
                 this.onPlayerDamagedCallback(data.playerId, data.damage);
+            }
+        });
+
+        // Handle monster position updates from server
+        this.socket.on('monsterUpdate', (data: { position: { x: number; y: number; z: number }; rotationY: number; health: number; maxHealth: number }) => {
+            if (this.onMonsterUpdateCallback) {
+                this.onMonsterUpdateCallback(data.position, data.rotationY, data.health, data.maxHealth);
+            }
+        });
+
+        // Handle monster death
+        this.socket.on('monsterDied', () => {
+            if (this.onMonsterDiedCallback) {
+                this.onMonsterDiedCallback();
+            }
+        });
+
+        // Handle monster respawn
+        this.socket.on('monsterRespawned', (data: { position: { x: number; y: number; z: number }; rotationY: number; health: number; maxHealth: number }) => {
+            if (this.onMonsterRespawnedCallback) {
+                this.onMonsterRespawnedCallback(data.position, data.rotationY, data.health, data.maxHealth);
+            }
+        });
+
+        // Handle monster health updates
+        this.socket.on('monsterHealthUpdate', (data: { health: number; maxHealth: number }) => {
+            if (this.onMonsterHealthUpdateCallback) {
+                this.onMonsterHealthUpdateCallback(data.health, data.maxHealth);
             }
         });
     }
@@ -372,6 +404,47 @@ export class NetworkManager {
      */
     public onPlayerDamaged(callback: (playerId: string, damage: number) => void): void {
         this.onPlayerDamagedCallback = callback;
+    }
+
+    /**
+     * Set callback to be called when monster position is updated from server
+     */
+    public onMonsterUpdate(callback: (position: { x: number; y: number; z: number }, rotationY: number, health: number, maxHealth: number) => void): void {
+        this.onMonsterUpdateCallback = callback;
+    }
+
+    /**
+     * Set callback to be called when monster dies
+     */
+    public onMonsterDied(callback: () => void): void {
+        this.onMonsterDiedCallback = callback;
+    }
+
+    /**
+     * Set callback to be called when monster respawns
+     */
+    public onMonsterRespawned(callback: (position: { x: number; y: number; z: number }, rotationY: number, health: number, maxHealth: number) => void): void {
+        this.onMonsterRespawnedCallback = callback;
+    }
+
+    /**
+     * Set callback to be called when monster health updates
+     */
+    public onMonsterHealthUpdate(callback: (health: number, maxHealth: number) => void): void {
+        this.onMonsterHealthUpdateCallback = callback;
+    }
+
+    /**
+     * Send monster damage event to server
+     */
+    public sendMonsterDamaged(damage: number): void {
+        if (!this.socket || !this.isConnected) {
+            return;
+        }
+
+        this.socket.emit('monsterDamaged', {
+            damage: damage
+        });
     }
 }
 

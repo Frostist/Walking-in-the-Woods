@@ -8,6 +8,9 @@ export class Monster {
     private isFrozen: boolean = false;
     private frozenRotation: number = 0;
     private elapsedTime: number = 0;
+    private health: number = 10;
+    private maxHealth: number = 10;
+    private isAlive: boolean = true;
 
     constructor(scene: THREE.Scene, startPosition: THREE.Vector3) {
         this.scene = scene;
@@ -186,6 +189,124 @@ export class Monster {
 
     public getMesh(): THREE.Group {
         return this.mesh;
+    }
+
+    /**
+     * Update monster position from server (server-authoritative)
+     * This is called when receiving position updates from the server
+     */
+    public updateFromServer(position: { x: number; y: number; z: number }, rotationY: number, isDay: boolean, health?: number, maxHealth?: number): void {
+        // Don't update if dead (unless respawning)
+        if (!this.isAlive && health === undefined) {
+            return;
+        }
+        
+        // Update position from server
+        this.position.set(position.x, position.y, position.z);
+        this.mesh.position.copy(this.position);
+        
+        // Update rotation from server
+        this.mesh.rotation.y = rotationY;
+        
+        // Update health if provided
+        if (health !== undefined) {
+            this.health = health;
+        }
+        if (maxHealth !== undefined) {
+            this.maxHealth = maxHealth;
+        }
+        
+        // Show/hide mesh based on alive status
+        this.mesh.visible = this.isAlive;
+        
+        // Handle day/night visual effects
+        if (isDay) {
+            // Freeze animation during day
+            if (!this.isFrozen) {
+                this.frozenRotation = rotationY;
+            }
+            this.isFrozen = true;
+            
+            // Reset animation to neutral pose
+            const leftArm = (this.mesh as any).leftArm;
+            const rightArm = (this.mesh as any).rightArm;
+            const leftLeg = (this.mesh as any).leftLeg;
+            const rightLeg = (this.mesh as any).rightLeg;
+
+            if (leftArm) leftArm.rotation.x = 0;
+            if (rightArm) rightArm.rotation.x = 0;
+            if (leftLeg) leftLeg.rotation.x = 0;
+            if (rightLeg) rightLeg.rotation.x = 0;
+        } else {
+            // Animate during night
+            this.isFrozen = false;
+            this.elapsedTime += 0.016; // Approximate frame time
+            
+            // Animate walking (swing arms and legs)
+            const walkSpeed = 8.0;
+            const armSwing = Math.sin(this.elapsedTime * walkSpeed) * 0.3;
+            const legSwing = Math.sin(this.elapsedTime * walkSpeed + Math.PI) * 0.2;
+
+            const leftArm = (this.mesh as any).leftArm;
+            const rightArm = (this.mesh as any).rightArm;
+            const leftLeg = (this.mesh as any).leftLeg;
+            const rightLeg = (this.mesh as any).rightLeg;
+
+            if (leftArm) leftArm.rotation.x = armSwing;
+            if (rightArm) rightArm.rotation.x = -armSwing;
+            if (leftLeg) leftLeg.rotation.x = -legSwing;
+            if (rightLeg) rightLeg.rotation.x = legSwing;
+        }
+    }
+
+    /**
+     * Handle monster death
+     */
+    public die(): void {
+        this.isAlive = false;
+        this.mesh.visible = false;
+    }
+
+    /**
+     * Handle monster respawn
+     */
+    public respawn(position: { x: number; y: number; z: number }, rotationY: number, health: number, maxHealth: number): void {
+        this.isAlive = true;
+        this.health = health;
+        this.maxHealth = maxHealth;
+        this.position.set(position.x, position.y, position.z);
+        this.mesh.position.copy(this.position);
+        this.mesh.rotation.y = rotationY;
+        this.mesh.visible = true;
+    }
+
+    /**
+     * Update health
+     */
+    public updateHealth(health: number, maxHealth: number): void {
+        this.health = health;
+        this.maxHealth = maxHealth;
+    }
+
+    /**
+     * Check if monster is alive
+     */
+    public getIsAlive(): boolean {
+        return this.isAlive;
+    }
+
+    /**
+     * Get current health
+     */
+    public getHealth(): number {
+        return this.health;
+    }
+
+    /**
+     * Get max health
+     */
+    public getMaxHealth(): number {
+        return this.maxHealth;
     }
 
     public dispose(): void {

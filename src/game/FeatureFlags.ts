@@ -10,6 +10,6 @@ export class FeatureFlags {
      * - true: Monster will spawn and chase player during night
      * - false: No monster will spawn
      */
-    public static readonly MONSTER_ENABLED: boolean = false;
+    public static readonly MONSTER_ENABLED: boolean = true;
 }
 

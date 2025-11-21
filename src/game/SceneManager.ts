@@ -346,10 +346,57 @@ export class SceneManager {
         shadowCamera.updateProjectionMatrix();
     }
 
-    public updateMonster(deltaTime: number, playerPosition: THREE.Vector3): void {
+    /**
+     * Update monster position from server
+     * This method is called when receiving monster updates from the server
+     */
+    public updateMonsterFromServer(position: { x: number; y: number; z: number }, rotationY: number, health?: number, maxHealth?: number): void {
         if (this.monster) {
-            this.monster.update(deltaTime, playerPosition, this.isDay);
+            this.monster.updateFromServer(position, rotationY, this.isDay, health, maxHealth);
         }
+    }
+
+    /**
+     * Handle monster death
+     */
+    public handleMonsterDeath(): void {
+        if (this.monster) {
+            this.monster.die();
+        }
+    }
+
+    /**
+     * Handle monster respawn
+     */
+    public handleMonsterRespawn(position: { x: number; y: number; z: number }, rotationY: number, health: number, maxHealth: number): void {
+        if (this.monster) {
+            this.monster.respawn(position, rotationY, health, maxHealth);
+        }
+    }
+
+    /**
+     * Update monster health
+     */
+    public updateMonsterHealth(health: number, maxHealth: number): void {
+        if (this.monster) {
+            this.monster.updateHealth(health, maxHealth);
+        }
+    }
+
+    /**
+     * Get monster mesh for collision detection
+     */
+    public getMonsterMesh(): THREE.Group | null {
+        return this.monster ? this.monster.getMesh() : null;
+    }
+
+    /**
+     * Legacy method - kept for compatibility but monster is now server-controlled
+     * @deprecated Monster is now controlled by server
+     */
+    public updateMonster(_deltaTime: number, _playerPosition: THREE.Vector3): void {
+        // Monster is now server-controlled, this method does nothing
+        // Keeping for backward compatibility
     }
 
     public isDayTime(): boolean {

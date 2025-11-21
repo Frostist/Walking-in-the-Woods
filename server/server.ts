@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { generateTrees, TreeData, generateGrass, GrassData } from './TreeGenerator.js';
+import { MonsterManager, PlayerState } from './MonsterManager.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -91,13 +92,10 @@ app.get('/', (req, res) => {
 });
 
 // Store connected players
-interface PlayerState {
-    id: string;
-    position: { x: number; y: number; z: number };
-    rotationY: number;
-}
-
 const players: Map<string, PlayerState> = new Map();
+
+// Initialize monster manager
+const monsterManager = new MonsterManager(io, players);
 
 // Generate trees once on server startup - all clients will see the same trees
 const TREE_COUNT = 80;
@@ -147,6 +145,25 @@ io.on('connection', (socket) => {
     const allPlayers = Array.from(players.values());
     socket.emit('players', allPlayers);
     
+    // Send current monster state to newly connected player
+    const monsterState = monsterManager.getMonsterState();
+    socket.emit('monsterUpdate', {
+        position: monsterState.position,
+        rotationY: monsterState.rotationY,
+        health: monsterState.health,
+        maxHealth: monsterState.maxHealth
+    });
+    
+    // Send monster alive status
+    if (monsterState.isAlive) {
+        socket.emit('monsterHealthUpdate', {
+            health: monsterState.health,
+            maxHealth: monsterState.maxHealth
+        });
+    } else {
+        socket.emit('monsterDied');
+    }
+    
     // Notify other players about new player
     socket.broadcast.emit('playerJoined', playerState);
     
@@ -180,11 +197,19 @@ io.on('connection', (socket) => {
             damage: data.damage
         });
     });
+
+    // Handle monster damage events
+    socket.on('monsterDamaged', (data: { damage: number }) => {
+        monsterManager.damageMonster(data.damage);
+    });
     
     // Handle player disconnect
     socket.on('disconnect', () => {
         console.log(`Player disconnected: ${socket.id}`);
         players.delete(socket.id);
+        
+        // Clean up attack cooldown for this player
+        monsterManager.cleanupPlayerCooldown(socket.id);
         
         // Notify other players
         io.emit('playerLeft', socket.id);
