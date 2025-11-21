@@ -1,7 +1,7 @@
 {
-  "name": "glock-wizards",
+  "name": "game-test",
   "version": "1.0.0",
-  "description": "Glock Wizards - 3D Web MVP (Three.js)",
+  "description": "A game development project using TypeScript and Three.js",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -18,13 +18,10 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "seedrandom": "^3.0.5",
-    "socket.io-client": "^4.8.1",
     "three": "^0.160.0",
-    "three-stdlib": "^2.28.7"
+    "socket.io-client": "^4.5.4"
   },
   "devDependencies": {
-    "@types/seedrandom": "^3.0.5",
     "@types/three": "^0.160.0",
     "typescript": "^5.3.3",
     "vite": "^7.2.4"

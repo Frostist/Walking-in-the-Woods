@@ -1,5 +1,4 @@
 import { defineConfig } from 'vite';
-import { resolve } from 'path';
 
 export default defineConfig({
   server: {
@@ -9,13 +8,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
-    chunkSizeWarningLimit: 1000
-  },
-  publicDir: 'public',
-  resolve: {
-    alias: {
-      '@': resolve(__dirname, './src')
-    }
+    chunkSizeWarningLimit: 1000 // Increase warning limit to 1MB (optional)
   }
 });
 

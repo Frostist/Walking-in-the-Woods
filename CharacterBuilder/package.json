@@ -1,0 +1,30 @@
+{
+  "name": "character-builder",
+  "version": "1.0.0",
+  "description": "Character Builder Tool for Game Development",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "character-builder",
+    "threejs",
+    "typescript",
+    "webgl"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "three": "^0.160.0",
+    "sql.js": "^1.10.3"
+  },
+  "devDependencies": {
+    "@types/three": "^0.160.0",
+    "typescript": "^5.3.3",
+    "vite": "^7.2.4"
+  }
+}
+

@@ -2,16 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import { generateTrees, generateGrass } from './TreeGenerator.js';
 import { MonsterManager } from './MonsterManager.js';
 import { DatabaseManager } from './DatabaseManager.js';
-import { EnemyManager } from './EnemyManager.js';
-import { WaveManager } from './WaveManager.js';
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 const app = express();
 const httpServer = createServer(app);
 // Configure CORS for Express API endpoints
@@ -116,64 +109,6 @@ function getBlockKey(x, y, z) {
 }
 // Initialize monster manager (pass blocks for collision detection)
 const monsterManager = new MonsterManager(io, players, blocks);
-// Load game configs
-let enemyConfigs;
-let waveConfig;
-let spawnPoints;
-try {
-    // Load enemies config
-    const enemiesPath = join(__dirname, '../config/enemies.json');
-    const enemiesData = JSON.parse(readFileSync(enemiesPath, 'utf-8'));
-    enemyConfigs = new Map();
-    Object.entries(enemiesData).forEach(([key, value]) => {
-        enemyConfigs.set(key, value);
-    });
-    // Load waves config
-    const wavesPath = join(__dirname, '../config/waves.json');
-    waveConfig = JSON.parse(readFileSync(wavesPath, 'utf-8'));
-    // Load spawns config
-    const spawnsPath = join(__dirname, '../config/spawns.json');
-    spawnPoints = JSON.parse(readFileSync(spawnsPath, 'utf-8'));
-    console.log('Game configs loaded successfully');
-}
-catch (error) {
-    console.error('Error loading game configs:', error);
-    // Fallback to empty configs
-    enemyConfigs = new Map();
-    waveConfig = {
-        startIndex: 1,
-        baseBudget: 20,
-        budgetPerWave: 12,
-        maxAliveBase: 6,
-        maxAlivePerWave: 1.5,
-        modifierChance: 0.1,
-        miniBossEvery: [],
-        bossThresholds: [],
-        waves: []
-    };
-    spawnPoints = [];
-}
-// Initialize enemy manager
-const enemyManager = new EnemyManager(io, players, enemyConfigs, spawnPoints);
-// Initialize wave manager
-const waveManager = new WaveManager(waveConfig, enemyManager, spawnPoints, enemyConfigs);
-// Game state synchronization
-let currentGameState = 'Boot';
-let currentWave = 0;
-// Wave update loop
-setInterval(() => {
-    const deltaTime = 0.05; // 50ms = 0.05s
-    const waveComplete = waveManager.update(deltaTime);
-    if (waveComplete && currentGameState === 'InWave') {
-        currentGameState = 'WaveClear';
-        io.emit('gameStateUpdate', { state: 'WaveClear' });
-        // Start downtime after a short delay
-        setTimeout(() => {
-            currentGameState = 'Downtime';
-            io.emit('gameStateUpdate', { state: 'Downtime' });
-        }, 2000);
-    }
-}, 50);
 // Generate trees once on server startup - all clients will see the same trees
 const TREE_COUNT = 80;
 const TREE_SPREAD = 60;
@@ -236,27 +171,6 @@ io.on('connection', (socket) => {
     }
     else {
         socket.emit('monsterDied');
-    }
-    // Send current enemy states to newly connected player
-    const allEnemies = enemyManager.getAllEnemies();
-    socket.emit('enemiesUpdate', allEnemies);
-    // Send current game state
-    socket.emit('gameStateUpdate', {
-        state: currentGameState,
-        wave: currentWave
-    });
-    // Send spawn points
-    socket.emit('spawnPoints', spawnPoints);
-    // Auto-start first wave if no players were connected before
-    if (players.size === 1 && currentGameState === 'Boot') {
-        currentWave = 1;
-        currentGameState = 'InWave';
-        waveManager.startWave(1);
-        io.emit('gameStateUpdate', {
-            state: 'InWave',
-            wave: currentWave
-        });
-        io.emit('waveStarted', { wave: currentWave });
     }
     // Notify other players about new player
     socket.broadcast.emit('playerJoined', playerState);
@@ -327,34 +241,6 @@ io.on('connection', (socket) => {
             io.emit('monsterKilled', {
                 killerId: socket.id
             });
-        }
-    });
-    // Handle enemy damage events
-    socket.on('enemyDamaged', (data) => {
-        const killed = enemyManager.damageEnemy(data.enemyId, data.damage, socket.id);
-        if (killed) {
-            // Enemy was killed
-            waveManager.onEnemyKilled(data.enemyId);
-            // Record kill (optional - you might want to track enemy kills differently)
-            // dbManager.recordKill(socket.id, 'enemy');
-            // Emit enemy killed event for economy/effects
-            io.emit('enemyKilled', {
-                enemyId: data.enemyId,
-                killerId: socket.id
-            });
-        }
-    });
-    // Handle wave start request
-    socket.on('startWave', (data) => {
-        if (currentGameState === 'Downtime' || currentGameState === 'Boot') {
-            currentWave = data.waveIndex;
-            currentGameState = 'InWave';
-            waveManager.startWave(data.waveIndex);
-            io.emit('gameStateUpdate', {
-                state: 'InWave',
-                wave: currentWave
-            });
-            io.emit('waveStarted', { wave: currentWave });
         }
     });
     // Handle block placement (server is authoritative)
