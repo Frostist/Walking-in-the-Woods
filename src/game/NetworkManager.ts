@@ -84,6 +84,8 @@ export class NetworkManager {
     private onBlocksReceivedCallback: ((blocks: BlockData[]) => void) | null = null;
 
     private playerName: string = 'Player';
+    private storedPlayerId: string | null = null;
+    private onPlayerIdReceivedCallback: ((playerId: string) => void) | null = null;
 
     constructor(serverUrl: string = 'http://localhost:3001') {
         this.serverUrl = serverUrl;
@@ -95,6 +97,18 @@ export class NetworkManager {
 
     public getPlayerName(): string {
         return this.playerName;
+    }
+
+    public setStoredPlayerId(playerId: string | null): void {
+        this.storedPlayerId = playerId;
+    }
+
+    public getStoredPlayerId(): string | null {
+        return this.storedPlayerId;
+    }
+
+    public setOnPlayerIdReceived(callback: (playerId: string) => void): void {
+        this.onPlayerIdReceivedCallback = callback;
     }
 
     public connect(): void {
@@ -119,9 +133,16 @@ export class NetworkManager {
             this.isConnected = true;
             this.connectionStatus = ConnectionStatus.CONNECTED;
             this.connectionAttempts = 0;
-            // Send player name to server on connection
+            // Send player name and stored player ID to server on connection
             if (this.socket) {
-                this.socket.emit('playerName', this.playerName);
+                this.socket.emit('playerName', {
+                    name: this.playerName,
+                    storedPlayerId: this.storedPlayerId
+                });
+                // Store the new socket.id as the player ID
+                if (this.socket.id) {
+                    this.storePlayerId(this.socket.id);
+                }
             }
         });
 
@@ -334,6 +355,13 @@ export class NetworkManager {
 
     public getPlayerId(): string | null {
         return this.socket?.id || null;
+    }
+
+    private storePlayerId(playerId: string): void {
+        // Store player ID in cookie via callback
+        if (this.onPlayerIdReceivedCallback) {
+            this.onPlayerIdReceivedCallback(playerId);
+        }
     }
 
     /**

@@ -105,6 +105,12 @@ const players: Map<string, PlayerState> = new Map();
 
 // Track last damager for each player (for kill attribution)
 const lastDamager: Map<string, string> = new Map(); // playerId -> attackerId
+const socketToPlayerId: Map<string, string> = new Map(); // socket.id -> stored player ID
+
+// Helper function to get effective player ID (stored ID or socket.id)
+const getEffectivePlayerId = (socketId: string): string => {
+    return socketToPlayerId.get(socketId) || socketId;
+};
 
 // Initialize database manager
 const dbManager = new DatabaseManager();
@@ -203,18 +209,39 @@ io.on('connection', (socket) => {
     }
     
     // Handle player name
-    socket.on('playerName', async (name: string) => {
+    socket.on('playerName', async (data: string | { name: string; storedPlayerId?: string | null }) => {
         const player = players.get(socket.id);
         if (player) {
             try {
-                // Sanitize name
-                const sanitizedName = (name || 'Player').substring(0, 20).replace(/[<>]/g, '') || 'Player';
+                // Handle both old format (string) and new format (object)
+                let playerName: string;
+                let storedPlayerId: string | null = null;
                 
-                // Register name in database (will handle uniqueness)
-                const registeredName = await dbManager.registerPlayerName(socket.id, sanitizedName);
+                if (typeof data === 'string') {
+                    // Old format - just a string
+                    playerName = data;
+                } else {
+                    // New format - object with name and storedPlayerId
+                    playerName = data.name;
+                    storedPlayerId = data.storedPlayerId || null;
+                }
+                
+                // If we have a stored player ID, use it for database operations
+                if (storedPlayerId) {
+                    socketToPlayerId.set(socket.id, storedPlayerId);
+                    console.log(`Player ${socket.id} reusing stored player ID: ${storedPlayerId}`);
+                }
+                
+                const effectivePlayerId = getEffectivePlayerId(socket.id);
+                
+                // Sanitize name
+                const sanitizedName = (playerName || 'Player').substring(0, 20).replace(/[<>]/g, '') || 'Player';
+                
+                // Register name in database using effective player ID (will handle uniqueness)
+                const registeredName = await dbManager.registerPlayerName(effectivePlayerId, sanitizedName);
                 player.name = registeredName;
                 
-                console.log(`Player ${socket.id} set name to: ${registeredName}${registeredName !== sanitizedName ? ` (original: ${sanitizedName} was taken)` : ''}`);
+                console.log(`Player ${socket.id} (effective ID: ${effectivePlayerId}) set name to: ${registeredName}${registeredName !== sanitizedName ? ` (original: ${sanitizedName} was taken)` : ''}`);
                 
                 // Broadcast updated player info to all clients
                 io.emit('playerUpdate', {
@@ -265,31 +292,34 @@ io.on('connection', (socket) => {
 
     // Handle player damage events
     socket.on('playerDamaged', (data: { targetPlayerId: string; damage: number }) => {
+        const attackerEffectiveId = getEffectivePlayerId(socket.id);
+        const targetEffectiveId = getEffectivePlayerId(data.targetPlayerId);
+        
         // Track who dealt the damage (for kill attribution)
         if (data.targetPlayerId !== socket.id) {
             // Only track if it's not self-damage
-            lastDamager.set(data.targetPlayerId, socket.id);
+            lastDamager.set(targetEffectiveId, attackerEffectiveId);
         }
         
-        // Update player health on server
+        // Update player health on server (use socket.id for game state, effective ID for database)
         const wasAlive = !monsterManager.isPlayerDead(data.targetPlayerId);
         monsterManager.updatePlayerHealth(data.targetPlayerId, data.damage);
         const isNowDead = monsterManager.isPlayerDead(data.targetPlayerId);
         
         // If player just died, record the kill
         if (wasAlive && isNowDead) {
-            const killerId = lastDamager.get(data.targetPlayerId);
-            if (killerId && killerId !== data.targetPlayerId) {
-                // Record player kill
-                dbManager.recordKill(killerId, 'player', data.targetPlayerId);
+            const killerId = lastDamager.get(targetEffectiveId);
+            if (killerId && killerId !== targetEffectiveId) {
+                // Record player kill using effective IDs
+                dbManager.recordKill(killerId, 'player', targetEffectiveId);
                 // Notify all clients about the kill
                 io.emit('playerKilled', {
                     killerId: killerId,
-                    victimId: data.targetPlayerId
+                    victimId: data.targetPlayerId // Use socket.id for client communication
                 });
             }
             // Clear the last damager for this player
-            lastDamager.delete(data.targetPlayerId);
+            lastDamager.delete(targetEffectiveId);
         }
         
         // Broadcast damage event to all players (including the damaged player for synchronization)
@@ -306,13 +336,14 @@ io.on('connection', (socket) => {
 
     // Handle monster damage events
     socket.on('monsterDamaged', (data: { damage: number }) => {
+        const effectivePlayerId = getEffectivePlayerId(socket.id);
         const wasAlive = monsterManager.isMonsterAlive();
         const killed = monsterManager.damageMonster(data.damage, socket.id);
         
         // If monster just died, record the kill
         if (wasAlive && killed) {
-            // Record monster kill
-            dbManager.recordKill(socket.id, 'monster');
+            // Record monster kill using effective player ID
+            dbManager.recordKill(effectivePlayerId, 'monster');
             // Notify all clients about the kill
             io.emit('monsterKilled', {
                 killerId: socket.id
@@ -361,6 +392,9 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log(`Player disconnected: ${socket.id}`);
         players.delete(socket.id);
+        
+        // Clean up socket to player ID mapping
+        socketToPlayerId.delete(socket.id);
         
         // Clean up attack cooldown for this player
         monsterManager.cleanupPlayerCooldown(socket.id);

@@ -91,6 +91,12 @@ export class Game {
         
         this.networkManager.setPlayerName(playerName);
         
+        // Check if player ID is already in cookies and pass it to network manager
+        const storedPlayerId = this.getPlayerIdFromCookie();
+        if (storedPlayerId) {
+            this.networkManager.setStoredPlayerId(storedPlayerId);
+        }
+        
         // Enable controls after name is set
         this.playerController.enableControls();
         
@@ -114,6 +120,11 @@ export class Game {
 
         // Connect to multiplayer server
         this.networkManager.connect();
+        
+        // Setup callback to save player ID when received
+        this.networkManager.setOnPlayerIdReceived((playerId) => {
+            this.savePlayerIdToCookie(playerId);
+        });
 
         // Setup callback to generate trees when received from server
         this.networkManager.onTreesReceived((trees) => {
@@ -297,6 +308,21 @@ export class Game {
         const expires = new Date();
         expires.setFullYear(expires.getFullYear() + 1);
         document.cookie = `playerName=${encodeURIComponent(name)}; expires=${expires.toUTCString()}; path=/`;
+    }
+
+    private getPlayerIdFromCookie(): string | null {
+        const id = document.cookie
+            .split('; ')
+            .find(row => row.startsWith('playerId='))
+            ?.split('=')[1];
+        return id ? decodeURIComponent(id) : null;
+    }
+
+    private savePlayerIdToCookie(id: string): void {
+        // Save for 1 year
+        const expires = new Date();
+        expires.setFullYear(expires.getFullYear() + 1);
+        document.cookie = `playerId=${encodeURIComponent(id)}; expires=${expires.toUTCString()}; path=/`;
     }
 
     private showNameInput(): Promise<string> {
