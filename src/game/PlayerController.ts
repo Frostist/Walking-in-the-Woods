@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TouchController, TouchInput } from './TouchController';
+import { TouchController } from './TouchController';
 
 export class PlayerController {
     private camera: THREE.PerspectiveCamera;

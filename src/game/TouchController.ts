@@ -7,7 +7,6 @@ export interface TouchInput {
 }
 
 export class TouchController {
-    private isActive: boolean = false;
     private joystickArea: HTMLElement | null = null;
     private joystickHandle: HTMLElement | null = null;
     private cameraArea: HTMLElement | null = null;
@@ -137,19 +136,25 @@ export class TouchController {
         this.sprintButton.addEventListener('touchstart', (e) => {
             e.preventDefault();
             this.sprintPressed = true;
-            this.sprintButton.style.background = 'rgba(0, 255, 0, 0.5)';
+            if (this.sprintButton) {
+                this.sprintButton.style.background = 'rgba(0, 255, 0, 0.5)';
+            }
         }, { passive: false });
         
         this.sprintButton.addEventListener('touchend', (e) => {
             e.preventDefault();
             this.sprintPressed = false;
-            this.sprintButton.style.background = 'rgba(0, 255, 0, 0.3)';
+            if (this.sprintButton) {
+                this.sprintButton.style.background = 'rgba(0, 255, 0, 0.3)';
+            }
         }, { passive: false });
         
         this.sprintButton.addEventListener('touchcancel', (e) => {
             e.preventDefault();
             this.sprintPressed = false;
-            this.sprintButton.style.background = 'rgba(0, 255, 0, 0.3)';
+            if (this.sprintButton) {
+                this.sprintButton.style.background = 'rgba(0, 255, 0, 0.3)';
+            }
         }, { passive: false });
     }
 
@@ -287,7 +292,6 @@ export class TouchController {
     }
 
     public enable(): void {
-        this.isActive = true;
         if (this.joystickArea) this.joystickArea.style.display = 'block';
         if (this.cameraArea) this.cameraArea.style.display = 'block';
         if (this.sprintButton) {
@@ -296,7 +300,6 @@ export class TouchController {
     }
 
     public disable(): void {
-        this.isActive = false;
         if (this.joystickArea) this.joystickArea.style.display = 'none';
         if (this.cameraArea) this.cameraArea.style.display = 'none';
         if (this.sprintButton) this.sprintButton.style.display = 'none';
