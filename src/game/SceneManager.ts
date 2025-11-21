@@ -19,11 +19,9 @@ export class SceneManager {
     private sunRadius: number = 150; // Radius of sun/moon orbit - increased to prevent sun going through floor
     private monster: Monster | null = null;
     private isDay: boolean = true;
-    private isMobile: boolean = false;
 
-    constructor(scene: THREE.Scene, isMobile: boolean = false) {
+    constructor(scene: THREE.Scene) {
         this.scene = scene;
-        this.isMobile = isMobile;
         this.treeGenerator = new TreeGenerator();
     }
 
@@ -39,8 +37,7 @@ export class SceneManager {
         // Add directional light (sun) - will move with sun
         this.directionalLight = new THREE.DirectionalLight(0xffffee, 0.9);
         this.directionalLight.castShadow = true;
-        // Lower resolution shadow maps on mobile for better performance
-        const sunShadowResolution = this.isMobile ? 2048 : 8192;
+        const sunShadowResolution = 8192;
         this.directionalLight.shadow.mapSize.width = sunShadowResolution;
         this.directionalLight.shadow.mapSize.height = sunShadowResolution;
         // Optimized shadow camera bounds - tighter near/far for better precision
@@ -63,8 +60,7 @@ export class SceneManager {
         // Add directional light (moon) - will move with moon
         this.moonLight = new THREE.DirectionalLight(0xaaaaff, 0.3);
         this.moonLight.castShadow = true;
-        // Lower resolution on mobile for better performance
-        const moonShadowResolution = this.isMobile ? 1024 : 4096;
+        const moonShadowResolution = 4096;
         this.moonLight.shadow.mapSize.width = moonShadowResolution;
         this.moonLight.shadow.mapSize.height = moonShadowResolution;
         // Optimized shadow camera bounds
@@ -88,9 +84,9 @@ export class SceneManager {
         this.createSun();
         this.createMoon();
 
-        // Generate forest - fewer trees on mobile for better performance
-        const treeCount = this.isMobile ? 50 : 80;
-        const treeSpread = this.isMobile ? 50 : 60;
+        // Generate forest
+        const treeCount = 80;
+        const treeSpread = 60;
         this.treeGenerator.generateForest(this.scene, treeCount, treeSpread);
 
         // Create monster - spawn it away from player (if feature flag is enabled)

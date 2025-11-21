@@ -15,11 +15,6 @@
             overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: #000;
-            /* Prevent touch scrolling on mobile */
-            touch-action: none;
-            -webkit-touch-callout: none;
-            -webkit-user-select: none;
-            user-select: none;
         }
         
         #canvas-container {
@@ -55,29 +50,38 @@
             font-size: 12px;
         }
         
-        /* Hide mobile controls on desktop */
-        @media (min-width: 769px) {
-            #joystick-area,
-            #camera-area,
-            #sprint-button,
-            #camera-toggle-button {
-                display: none !important;
-            }
+        /* Mobile message styling */
+        #mobile-message {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            color: white;
         }
         
-        /* Ensure mobile controls are visible on mobile */
-        @media (max-width: 768px) {
-            #joystick-area,
-            #camera-area,
-            #sprint-button,
-            #camera-toggle-button {
-                display: block;
-            }
-            
-            #sprint-button,
-            #camera-toggle-button {
-                display: flex;
-            }
+        #mobile-message .message-content {
+            text-align: center;
+            padding: 40px;
+            max-width: 500px;
+        }
+        
+        #mobile-message h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            font-weight: 700;
+        }
+        
+        #mobile-message p {
+            font-size: 18px;
+            line-height: 1.6;
+            margin-bottom: 15px;
+            opacity: 0.9;
         }
     </style>
 </head>

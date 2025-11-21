@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { TouchController } from './TouchController';
 
 export class PlayerController {
     private camera: THREE.PerspectiveCamera;
@@ -17,10 +16,6 @@ export class PlayerController {
     private keys: { [key: string]: boolean } = {};
     private vKeyJustPressed: boolean = false;
     
-    // Touch controller (optional, for mobile)
-    private touchController: TouchController | null = null;
-    private isMobile: boolean = false;
-    
     // Player position
     private position: THREE.Vector3;
     private height: number = 1.6; // Eye height
@@ -31,41 +26,33 @@ export class PlayerController {
     private thirdPersonHeight: number = 2.5; // Height above character
     private cameraRotationX: number = -0.3; // Look down angle in third person
 
-    constructor(camera: THREE.PerspectiveCamera, domElement: HTMLElement, touchController?: TouchController | null) {
+    constructor(camera: THREE.PerspectiveCamera, domElement: HTMLElement) {
         this.camera = camera;
         this.domElement = domElement;
         this.velocity = new THREE.Vector3();
         this.euler = new THREE.Euler(0, 0, 0, 'YXZ');
         this.position = new THREE.Vector3(0, this.height, 0);
-        this.touchController = touchController || null;
-        this.isMobile = touchController !== null && touchController !== undefined;
         
         this.setupEventListeners();
     }
 
     private setupEventListeners(): void {
-        // Only setup desktop controls if not on mobile
-        if (!this.isMobile) {
-            // Pointer lock for mouse look
-            this.domElement.addEventListener('click', () => {
-                if (!this.isPointerLocked) {
-                    this.domElement.requestPointerLock();
-                }
-            });
+        // Pointer lock for mouse look
+        this.domElement.addEventListener('click', () => {
+            if (!this.isPointerLocked) {
+                this.domElement.requestPointerLock();
+            }
+        });
 
-            document.addEventListener('pointerlockchange', () => {
-                this.isPointerLocked = document.pointerLockElement === this.domElement;
-            });
+        document.addEventListener('pointerlockchange', () => {
+            this.isPointerLocked = document.pointerLockElement === this.domElement;
+        });
 
-            // Mouse movement
-            document.addEventListener('mousemove', (e) => this.onMouseMove(e));
-        }
+        // Mouse movement
+        document.addEventListener('mousemove', (e) => this.onMouseMove(e));
 
-        // Keyboard (works on both desktop and mobile if physical keyboard available)
+        // Keyboard
         document.addEventListener('keydown', (e) => {
-            // Skip keyboard input on mobile to avoid conflicts
-            if (this.isMobile) return;
-            
             this.keys[e.code] = true;
             
             // Toggle camera mode with 'V' key (only once per press)
@@ -80,8 +67,6 @@ export class PlayerController {
         });
         
         document.addEventListener('keyup', (e) => {
-            if (this.isMobile) return;
-            
             this.keys[e.code] = false;
             if (e.code === 'KeyV') {
                 this.vKeyJustPressed = false;
@@ -116,30 +101,6 @@ export class PlayerController {
         // Convert deltaTime from milliseconds to seconds
         const deltaSeconds = deltaTime / 1000;
 
-        // Handle touch input for camera rotation (mobile)
-        if (this.isMobile && this.touchController) {
-            const touchInput = this.touchController.getInput();
-            
-            // Apply camera rotation from touch
-            if (touchInput.cameraDeltaX !== 0 || touchInput.cameraDeltaY !== 0) {
-                if (this.isThirdPerson) {
-                    // In third-person, rotate camera around character
-                    this.euler.y -= touchInput.cameraDeltaX;
-                    this.cameraRotationX -= touchInput.cameraDeltaY;
-                    // Clamp vertical rotation
-                    this.cameraRotationX = Math.max(-Math.PI / 2, Math.min(0.5, this.cameraRotationX));
-                } else {
-                    // In first-person, rotate camera directly
-                    this.euler.setFromQuaternion(this.camera.quaternion);
-                    this.euler.y -= touchInput.cameraDeltaX;
-                    this.euler.x -= touchInput.cameraDeltaY;
-                    // Clamp vertical rotation
-                    this.euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.euler.x));
-                    this.camera.quaternion.setFromEuler(this.euler);
-                }
-            }
-        }
-
         // Reset velocity
         this.velocity.x = 0;
         this.velocity.z = 0;
@@ -153,38 +114,22 @@ export class PlayerController {
         forward.normalize();
 
         // Check sprint
-        let speed = this.moveSpeed;
-        if (this.isMobile && this.touchController) {
-            const touchInput = this.touchController.getInput();
-            speed = touchInput.sprint ? this.moveSpeed * this.sprintMultiplier : this.moveSpeed;
-        } else {
-            speed = this.keys['ShiftLeft'] || this.keys['ShiftRight'] 
-                ? this.moveSpeed * this.sprintMultiplier 
-                : this.moveSpeed;
-        }
+        const speed = this.keys['ShiftLeft'] || this.keys['ShiftRight'] 
+            ? this.moveSpeed * this.sprintMultiplier 
+            : this.moveSpeed;
 
-        // Movement input - use touch on mobile, keyboard on desktop
-        if (this.isMobile && this.touchController) {
-            const touchInput = this.touchController.getInput();
-            if (touchInput.moveX !== 0 || touchInput.moveZ !== 0) {
-                // Apply movement from joystick
-                this.velocity.add(right.multiplyScalar(touchInput.moveX * speed));
-                this.velocity.add(forward.multiplyScalar(touchInput.moveZ * speed));
-            }
-        } else {
-            // Desktop keyboard controls
-            if (this.keys['KeyW'] || this.keys['ArrowUp']) {
-                this.velocity.add(forward.multiplyScalar(speed));
-            }
-            if (this.keys['KeyS'] || this.keys['ArrowDown']) {
-                this.velocity.add(forward.multiplyScalar(-speed));
-            }
-            if (this.keys['KeyA'] || this.keys['ArrowLeft']) {
-                this.velocity.add(right.multiplyScalar(-speed));
-            }
-            if (this.keys['KeyD'] || this.keys['ArrowRight']) {
-                this.velocity.add(right.multiplyScalar(speed));
-            }
+        // Desktop keyboard controls
+        if (this.keys['KeyW'] || this.keys['ArrowUp']) {
+            this.velocity.add(forward.multiplyScalar(speed));
+        }
+        if (this.keys['KeyS'] || this.keys['ArrowDown']) {
+            this.velocity.add(forward.multiplyScalar(-speed));
+        }
+        if (this.keys['KeyA'] || this.keys['ArrowLeft']) {
+            this.velocity.add(right.multiplyScalar(-speed));
+        }
+        if (this.keys['KeyD'] || this.keys['ArrowRight']) {
+            this.velocity.add(right.multiplyScalar(speed));
         }
 
         // Normalize velocity if moving diagonally
@@ -250,11 +195,6 @@ export class PlayerController {
         if (this.isPointerLocked) {
             document.exitPointerLock();
         }
-    }
-    
-    public setTouchController(touchController: TouchController | null): void {
-        this.touchController = touchController;
-        this.isMobile = touchController !== null;
     }
 }
 
