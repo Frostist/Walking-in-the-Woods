@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Test - Three.js</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #000;
+        }
+        
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 100;
+            pointer-events: none;
+        }
+        
+        #info h3 {
+            margin: 0 0 8px 0;
+            font-size: 16px;
+        }
+        
+        #info ul {
+            margin: 5px 0 0 0;
+            padding-left: 20px;
+        }
+        
+        #info li {
+            margin: 3px 0;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <div id="info">
+        <h3>3D Forest Walk</h3>
+        <ul>
+            <li>Click to lock mouse</li>
+            <li>WASD - Move</li>
+            <li>Shift - Sprint</li>
+            <li>Mouse - Look around</li>
+        </ul>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
+
