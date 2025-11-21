@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { TreeGenerator } from './TreeGenerator';
+import { Monster } from './Monster';
+import { FeatureFlags } from './FeatureFlags';
 
 export class SceneManager {
     private scene: THREE.Scene;
@@ -14,7 +16,9 @@ export class SceneManager {
     private ambientLight: THREE.AmbientLight | null = null;
     private cycleDuration: number = 300000; // 5 minutes in milliseconds
     private elapsedTime: number = 0;
-    private sunRadius: number = 50; // Radius of sun/moon orbit
+    private sunRadius: number = 150; // Radius of sun/moon orbit - increased to prevent sun going through floor
+    private monster: Monster | null = null;
+    private isDay: boolean = true;
 
     constructor(scene: THREE.Scene) {
         this.scene = scene;
@@ -33,30 +37,46 @@ export class SceneManager {
         // Add directional light (sun) - will move with sun
         this.directionalLight = new THREE.DirectionalLight(0xffffee, 0.9);
         this.directionalLight.castShadow = true;
-        this.directionalLight.shadow.mapSize.width = 4096;
-        this.directionalLight.shadow.mapSize.height = 4096;
-        this.directionalLight.shadow.camera.near = 0.5;
-        this.directionalLight.shadow.camera.far = 100;
-        this.directionalLight.shadow.camera.left = -50;
-        this.directionalLight.shadow.camera.right = 50;
-        this.directionalLight.shadow.camera.top = 50;
-        this.directionalLight.shadow.camera.bottom = -50;
-        this.directionalLight.shadow.bias = -0.0001;
+        // Higher resolution shadow maps for sharper, more realistic shadows
+        this.directionalLight.shadow.mapSize.width = 8192;
+        this.directionalLight.shadow.mapSize.height = 8192;
+        // Optimized shadow camera bounds - tighter near/far for better precision
+        this.directionalLight.shadow.camera.near = 0.1;
+        this.directionalLight.shadow.camera.far = 200;
+        // Shadow camera bounds will be updated dynamically to follow player
+        this.directionalLight.shadow.camera.left = -60;
+        this.directionalLight.shadow.camera.right = 60;
+        this.directionalLight.shadow.camera.top = 60;
+        this.directionalLight.shadow.camera.bottom = -60;
+        // Improved shadow bias to reduce shadow acne without peter panning
+        this.directionalLight.shadow.bias = -0.00005;
+        // Shadow radius for softer, more realistic shadow edges
+        this.directionalLight.shadow.radius = 8;
+        // Normal bias to reduce shadow acne on surfaces
+        this.directionalLight.shadow.normalBias = 0.02;
         this.scene.add(this.directionalLight);
         this.objects.push(this.directionalLight);
 
         // Add directional light (moon) - will move with moon
         this.moonLight = new THREE.DirectionalLight(0xaaaaff, 0.3);
         this.moonLight.castShadow = true;
-        this.moonLight.shadow.mapSize.width = 2048;
-        this.moonLight.shadow.mapSize.height = 2048;
-        this.moonLight.shadow.camera.near = 0.5;
-        this.moonLight.shadow.camera.far = 100;
-        this.moonLight.shadow.camera.left = -50;
-        this.moonLight.shadow.camera.right = 50;
-        this.moonLight.shadow.camera.top = 50;
-        this.moonLight.shadow.camera.bottom = -50;
-        this.moonLight.shadow.bias = -0.0001;
+        // Higher resolution for moon shadows too
+        this.moonLight.shadow.mapSize.width = 4096;
+        this.moonLight.shadow.mapSize.height = 4096;
+        // Optimized shadow camera bounds
+        this.moonLight.shadow.camera.near = 0.1;
+        this.moonLight.shadow.camera.far = 200;
+        // Shadow camera bounds will be updated dynamically
+        this.moonLight.shadow.camera.left = -60;
+        this.moonLight.shadow.camera.right = 60;
+        this.moonLight.shadow.camera.top = 60;
+        this.moonLight.shadow.camera.bottom = -60;
+        // Improved shadow bias
+        this.moonLight.shadow.bias = -0.00005;
+        // Softer shadow edges for moon
+        this.moonLight.shadow.radius = 6;
+        // Normal bias
+        this.moonLight.shadow.normalBias = 0.02;
         this.scene.add(this.moonLight);
         this.objects.push(this.moonLight);
 
@@ -66,14 +86,20 @@ export class SceneManager {
 
         // Generate forest
         this.treeGenerator.generateForest(this.scene, 80, 60);
+
+        // Create monster - spawn it away from player (if feature flag is enabled)
+        if (FeatureFlags.MONSTER_ENABLED) {
+            const monsterStartPos = new THREE.Vector3(20, 1.0, 20);
+            this.monster = new Monster(this.scene, monsterStartPos);
+        }
     }
 
     private createSun(): void {
         // Create sun geometry
         const sunGeometry = new THREE.SphereGeometry(2, 32, 32);
         
-        // Create glowing sun material
-        const sunMaterial = new THREE.MeshBasicMaterial({
+        // Create glowing sun material - use MeshStandardMaterial for emissive support
+        const sunMaterial = new THREE.MeshStandardMaterial({
             color: 0xffffee,
             emissive: 0xffaa00,
             emissiveIntensity: 1.5
@@ -100,8 +126,8 @@ export class SceneManager {
         // Create moon geometry
         const moonGeometry = new THREE.SphereGeometry(1.5, 32, 32);
         
-        // Create glowing moon material
-        const moonMaterial = new THREE.MeshBasicMaterial({
+        // Create glowing moon material - use MeshStandardMaterial for emissive support
+        const moonMaterial = new THREE.MeshStandardMaterial({
             color: 0xeeeeff,
             emissive: 0xaaaaaa,
             emissiveIntensity: 0.8
@@ -185,7 +211,7 @@ export class SceneManager {
         }
     }
 
-    public update(deltaTime: number): void {
+    public update(deltaTime: number, playerPosition: THREE.Vector3): void {
         // Update day/night cycle
         this.elapsedTime += deltaTime;
         const cycleProgress = (this.elapsedTime % this.cycleDuration) / this.cycleDuration;
@@ -205,9 +231,11 @@ export class SceneManager {
         const moonY = Math.sin(moonAngle) * this.sunRadius;
         const moonZ = 0;
         
-        // Update sun position
+        // Update sun position - ensure it stays well above ground
         if (this.sun && this.sunGlow) {
-            this.sun.position.set(sunX, Math.max(0, sunY), sunZ);
+            // Clamp sun Y position to be at least 10 units above ground
+            const sunYClamped = Math.max(10, sunY);
+            this.sun.position.set(sunX, sunYClamped, sunZ);
             this.sunGlow.position.copy(this.sun.position);
             
             // Hide sun when below horizon
@@ -216,9 +244,11 @@ export class SceneManager {
             this.sunGlow.visible = sunVisible;
         }
         
-        // Update moon position
+        // Update moon position - ensure it stays well above ground
         if (this.moon && this.moonGlow) {
-            this.moon.position.set(moonX, Math.max(0, moonY), moonZ);
+            // Clamp moon Y position to be at least 10 units above ground
+            const moonYClamped = Math.max(10, moonY);
+            this.moon.position.set(moonX, moonYClamped, moonZ);
             this.moonGlow.position.copy(this.moon.position);
             
             // Hide moon when below horizon
@@ -238,6 +268,9 @@ export class SceneManager {
             // Adjust light intensity based on sun height
             this.directionalLight.intensity = sunHeightNormalized * 0.9;
             this.directionalLight.visible = sunY > -10;
+            
+            // Update shadow camera to follow player for better shadow quality
+            this.updateShadowCamera(this.directionalLight.shadow.camera, playerPosition);
         }
         
         // Update moon light to follow moon
@@ -248,6 +281,9 @@ export class SceneManager {
             const moonIntensity = moonHeightNormalized * 0.4 * (1 - sunHeightNormalized * 0.5);
             this.moonLight.intensity = moonIntensity;
             this.moonLight.visible = moonY > -10;
+            
+            // Update shadow camera to follow player for better shadow quality
+            this.updateShadowCamera(this.moonLight.shadow.camera, playerPosition);
         }
         
         // Update ambient light based on time of day - keep it bright enough so trees are visible
@@ -267,9 +303,46 @@ export class SceneManager {
         const daySky = new THREE.Color(0x87ceeb); // Sky blue
         const nightSky = new THREE.Color(0x1a1a3a); // Dark blue but not pure black
         this.scene.background = daySky.clone().lerp(nightSky, 1 - sunHeightNormalized);
+
+        // Determine if it's day or night (day when sun is above horizon and bright)
+        this.isDay = sunHeightNormalized > 0.3;
+    }
+
+    private updateShadowCamera(shadowCamera: THREE.OrthographicCamera, playerPosition: THREE.Vector3): void {
+        // Make shadow camera follow player position for optimal shadow quality
+        // This ensures shadows are always rendered at high quality around the player
+        const shadowDistance = 80; // Distance from player to shadow camera bounds
+        
+        shadowCamera.position.set(
+            playerPosition.x,
+            playerPosition.y + 50, // Position camera above player
+            playerPosition.z
+        );
+        
+        // Update shadow camera bounds centered on player
+        shadowCamera.left = playerPosition.x - shadowDistance;
+        shadowCamera.right = playerPosition.x + shadowDistance;
+        shadowCamera.top = playerPosition.z + shadowDistance;
+        shadowCamera.bottom = playerPosition.z - shadowDistance;
+        
+        // Update the camera projection matrix
+        shadowCamera.updateProjectionMatrix();
+    }
+
+    public updateMonster(deltaTime: number, playerPosition: THREE.Vector3): void {
+        if (this.monster) {
+            this.monster.update(deltaTime, playerPosition, this.isDay);
+        }
+    }
+
+    public isDayTime(): boolean {
+        return this.isDay;
     }
 
     public dispose(): void {
+        if (this.monster) {
+            this.monster.dispose();
+        }
         this.treeGenerator.dispose();
         
         this.objects.forEach(obj => {
