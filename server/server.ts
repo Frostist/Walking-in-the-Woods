@@ -7,8 +7,11 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {
         origin: "*", // In production, specify your client URL
-        methods: ["GET", "POST"]
-    }
+        methods: ["GET", "POST"],
+        credentials: true
+    },
+    transports: ['websocket', 'polling'], // Allow both transports for Railway compatibility
+    allowEIO3: true // Allow Engine.IO v3 clients
 });
 
 // Status endpoint - shows server is online and player count

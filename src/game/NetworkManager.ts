@@ -33,6 +33,7 @@ export class NetworkManager {
 
     constructor(serverUrl: string = 'http://localhost:3001') {
         this.serverUrl = serverUrl;
+        console.log('NetworkManager initialized with server URL:', serverUrl);
     }
 
     public connect(): void {
@@ -48,7 +49,10 @@ export class NetworkManager {
             reconnectionAttempts: Infinity,
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
-            timeout: 20000
+            timeout: 20000,
+            transports: ['websocket', 'polling'], // Try websocket first, fallback to polling
+            upgrade: true, // Allow transport upgrades
+            rememberUpgrade: true // Remember successful transport upgrades
         });
 
         this.socket.on('connect', () => {
@@ -72,6 +76,7 @@ export class NetworkManager {
 
         this.socket.on('connect_error', (error: Error) => {
             console.error('Connection error:', error);
+            console.error('Attempting to connect to:', this.serverUrl);
             this.connectionStatus = ConnectionStatus.RECONNECTING;
         });
 
