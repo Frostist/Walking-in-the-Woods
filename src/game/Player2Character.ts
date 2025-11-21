@@ -43,8 +43,10 @@ export class Player2Character {
     
     public updatePosition(playerPosition: THREE.Vector3, rotationY: number): void {
         // Update position
+        // playerPosition.y is eye height (1.6), so ground level where feet are is playerPosition.y - 1.6
         if (this.mesh.parent === this.scene) {
-            this.mesh.position.set(playerPosition.x, 0, playerPosition.z);
+            const groundY = playerPosition.y - 1.6;
+            this.mesh.position.set(playerPosition.x, groundY, playerPosition.z);
             this.mesh.rotation.y = rotationY;
         }
     }

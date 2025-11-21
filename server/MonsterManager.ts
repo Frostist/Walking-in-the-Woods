@@ -310,58 +310,71 @@ export class MonsterManager {
         
         // Check blocks in area around monster
         const checkRadius = monsterRadius + blockSize * 0.6;
-        const minX = Math.floor((newX - checkRadius) / blockSize) * blockSize;
-        const maxX = Math.ceil((newX + checkRadius) / blockSize) * blockSize;
-        const minZ = Math.floor((newZ - checkRadius) / blockSize) * blockSize;
-        const maxZ = Math.ceil((newZ + checkRadius) / blockSize) * blockSize;
+        const minX = newX - checkRadius;
+        const maxX = newX + checkRadius;
+        const minZ = newZ - checkRadius;
+        const maxZ = newZ + checkRadius;
+        
+        // Monster vertical bounds
+        const monsterBottom = monsterY - monsterHeight/2;
+        const monsterTop = monsterY + monsterHeight/2;
         
         let finalX = newX;
         let finalZ = newZ;
         
-        // Check all blocks in the area
-        for (let x = minX; x <= maxX; x += blockSize) {
-            for (let z = minZ; z <= maxZ; z += blockSize) {
-                // Check blocks at monster's Y level (ground level and slightly above)
-                for (let y = Math.floor((monsterY - monsterHeight/2) / blockSize) * blockSize;
-                     y <= Math.ceil((monsterY + monsterHeight/2) / blockSize) * blockSize;
-                     y += blockSize) {
-                    
-                    const blockKey = `${x},${y},${z}`;
-                    if (this.blocks.has(blockKey)) {
-                        const blockMinX = x - blockSize/2;
-                        const blockMaxX = x + blockSize/2;
-                        const blockMinZ = z - blockSize/2;
-                        const blockMaxZ = z + blockSize/2;
-                        
-                        const monsterMinX = finalX - monsterRadius;
-                        const monsterMaxX = finalX + monsterRadius;
-                        const monsterMinZ = finalZ - monsterRadius;
-                        const monsterMaxZ = finalZ + monsterRadius;
-                        
-                        // Check if monster collides with block (horizontal collision only)
-                        if (monsterMaxX > blockMinX && monsterMinX < blockMaxX &&
-                            monsterMaxZ > blockMinZ && monsterMinZ < blockMaxZ) {
-                            
-                            // Push monster out of block
-                            const overlapX = Math.min(monsterMaxX - blockMinX, blockMaxX - monsterMinX);
-                            const overlapZ = Math.min(monsterMaxZ - blockMinZ, blockMaxZ - monsterMinZ);
-                            
-                            if (overlapX < overlapZ) {
-                                // Push out in X direction
-                                if (finalX > x) {
-                                    finalX = blockMaxX + monsterRadius;
-                                } else {
-                                    finalX = blockMinX - monsterRadius;
-                                }
-                            } else {
-                                // Push out in Z direction
-                                if (finalZ > z) {
-                                    finalZ = blockMaxZ + monsterRadius;
-                                } else {
-                                    finalZ = blockMinZ - monsterRadius;
-                                }
-                            }
-                        }
+        // Iterate through all blocks and check if they're in the collision area
+        // This approach handles any key format and ensures we check all blocks
+        for (const [key, blockData] of this.blocks.entries()) {
+            const blockX = blockData.x;
+            const blockY = blockData.y;
+            const blockZ = blockData.z;
+            
+            // Check if block is in horizontal range
+            if (blockX < minX || blockX > maxX || blockZ < minZ || blockZ > maxZ) {
+                continue;
+            }
+            
+            // Check if block is in vertical range (monster can collide with it)
+            const blockBottom = blockY - blockSize/2;
+            const blockTop = blockY + blockSize/2;
+            
+            // Check if monster and block overlap vertically
+            if (monsterTop < blockBottom || monsterBottom > blockTop) {
+                continue; // No vertical overlap, skip this block
+            }
+            
+            // Block is in collision range, check horizontal collision
+            const blockMinX = blockX - blockSize/2;
+            const blockMaxX = blockX + blockSize/2;
+            const blockMinZ = blockZ - blockSize/2;
+            const blockMaxZ = blockZ + blockSize/2;
+            
+            const monsterMinX = finalX - monsterRadius;
+            const monsterMaxX = finalX + monsterRadius;
+            const monsterMinZ = finalZ - monsterRadius;
+            const monsterMaxZ = finalZ + monsterRadius;
+            
+            // Check if monster collides with block (horizontal collision only)
+            if (monsterMaxX > blockMinX && monsterMinX < blockMaxX &&
+                monsterMaxZ > blockMinZ && monsterMinZ < blockMaxZ) {
+                
+                // Push monster out of block
+                const overlapX = Math.min(monsterMaxX - blockMinX, blockMaxX - monsterMinX);
+                const overlapZ = Math.min(monsterMaxZ - blockMinZ, blockMaxZ - monsterMinZ);
+                
+                if (overlapX < overlapZ) {
+                    // Push out in X direction
+                    if (finalX > blockX) {
+                        finalX = blockMaxX + monsterRadius;
+                    } else {
+                        finalX = blockMinX - monsterRadius;
+                    }
+                } else {
+                    // Push out in Z direction
+                    if (finalZ > blockZ) {
+                        finalZ = blockMaxZ + monsterRadius;
+                    } else {
+                        finalZ = blockMinZ - monsterRadius;
                     }
                 }
             }

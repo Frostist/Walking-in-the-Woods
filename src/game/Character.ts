@@ -76,8 +76,9 @@ export class Character {
             if (!this.scene.children.includes(this.mesh)) {
                 this.scene.add(this.mesh);
             }
-            // Position character at ground level
-            this.mesh.position.set(playerPosition.x, 0, playerPosition.z);
+            // Position character at ground level (playerPosition.y is eye height, so ground is playerPosition.y - 1.6)
+            const groundY = playerPosition.y - 1.6;
+            this.mesh.position.set(playerPosition.x, groundY, playerPosition.z);
             this.mesh.rotation.y = rotationY;
             // Show head in third-person
             const head = this.mesh.children.find(child => {
@@ -117,8 +118,9 @@ export class Character {
             if (!this.scene.children.includes(this.mesh)) {
                 this.scene.add(this.mesh);
             }
-            // Position character at ground level (below camera position)
-            this.mesh.position.set(playerPosition.x, 0, playerPosition.z);
+            // Position character at ground level (playerPosition.y is eye height, so ground is playerPosition.y - 1.6)
+            const groundY = playerPosition.y - 1.6;
+            this.mesh.position.set(playerPosition.x, groundY, playerPosition.z);
             this.mesh.rotation.y = rotationY;
             // Hide head in first-person
             const head = this.mesh.children.find(child => {
@@ -164,8 +166,10 @@ export class Character {
     
     public updatePosition(playerPosition: THREE.Vector3, rotationY: number): void {
         // Update position when in scene (both first-person and third-person now keep mesh in scene)
+        // playerPosition.y is eye height (1.6), so ground level where feet are is playerPosition.y - 1.6
         if (this.mesh.parent === this.scene) {
-            this.mesh.position.set(playerPosition.x, 0, playerPosition.z);
+            const groundY = playerPosition.y - 1.6;
+            this.mesh.position.set(playerPosition.x, groundY, playerPosition.z);
             this.mesh.rotation.y = rotationY;
         }
     }
