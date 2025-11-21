@@ -32,7 +32,6 @@ export class Player2Character {
             this.scene.add(this.mesh);
             this.mesh.position.set(0, 0, 0);
         } catch (error) {
-            console.error('Failed to load character data, using default character:', error);
             this.mesh = this.createDefaultCharacter();
             if (this.scene.children.includes(this.mesh)) {
                 this.scene.remove(this.mesh);

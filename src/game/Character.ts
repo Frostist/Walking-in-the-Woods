@@ -38,7 +38,6 @@ export class Character {
             }
             this.mesh.position.set(0, 0, 0);
         } catch (error) {
-            console.error('Failed to load character data, using default character:', error);
             const oldMesh = this.mesh;
             this.mesh = this.createDefaultCharacter();
             if (oldMesh && this.scene.children.includes(oldMesh)) {
@@ -517,9 +516,7 @@ export class Character {
                     // Position and rotation are relative to parent (rightHand)
                     this.gun.position.set(gunData.position.x, gunData.position.y, gunData.position.z);
                     this.gun.rotation.set(gunData.rotation.x, gunData.rotation.y, gunData.rotation.z);
-                    console.log('Gun attached to', gunData.parentId, 'at position', gunData.position);
                 } else {
-                    console.warn('Could not find parent part for gun:', gunData.parentId, 'Available parts:', Array.from(this.mesh.children).map(c => c.userData?.id));
                     // Fallback: try to attach to rightHand directly
                     if (this.rightHand) {
                         if (this.gun.parent) {
@@ -528,9 +525,6 @@ export class Character {
                         this.rightHand.add(this.gun);
                         this.gun.position.set(gunData.position.x, gunData.position.y, gunData.position.z);
                         this.gun.rotation.set(gunData.rotation.x, gunData.rotation.y, gunData.rotation.z);
-                        console.log('Gun attached to rightHand (fallback)');
-                    } else {
-                        console.error('Cannot attach gun: no parent part and no rightHand');
                     }
                 }
             } else {
@@ -564,7 +558,6 @@ export class Character {
                 }
             });
         } catch (error) {
-            console.error('Error loading gun:', error);
             // Silently fail - gun loading errors are not critical
         }
     }
@@ -669,8 +662,10 @@ export class Character {
     }
     
     public takeDamage(amount: number = 1): void {
+        const oldHealth = this.health;
         this.health = Math.max(0, this.health - amount);
-        if (this.onHealthChanged) {
+        // Always trigger callback if health changed
+        if (oldHealth !== this.health && this.onHealthChanged) {
             this.onHealthChanged(this.health);
         }
     }

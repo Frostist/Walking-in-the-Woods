@@ -84,14 +84,12 @@ export class Game {
 
         // Setup callback to generate trees when received from server
         this.networkManager.onTreesReceived((trees) => {
-            console.log(`Generating ${trees.length} trees from server data`);
             this.sceneManager.generateTreesFromServerData(trees);
             this.updateLoadingProgress(70, 'Loading trees...');
         });
 
         // Setup callback to generate grass when received from server
         this.networkManager.onGrassReceived((grass) => {
-            console.log(`Generating ${grass.length} grass patches from server data`);
             this.sceneManager.generateGrassFromServerData(grass);
             this.updateLoadingProgress(90, 'Loading grass...');
         });
@@ -120,7 +118,9 @@ export class Game {
         this.networkManager.onPlayerDamaged((playerId, damage) => {
             const localPlayerId = this.networkManager.getPlayerId();
             if (playerId === localPlayerId) {
-                // Local player took damage
+                // Local player took damage - apply it (this handles server-synchronized damage)
+                // Note: We also apply damage immediately on hit detection, but server callback
+                // ensures synchronization across all clients
                 this.character.takeDamage(damage);
             } else {
                 // Remote player took damage
@@ -253,26 +253,42 @@ export class Game {
         document.body.appendChild(respawnButton);
         
         // Update hearts when health changes
-        this.character.setOnHealthChanged((health) => {
-            this.updateHeartsUI(health);
+        const healthCallback = (health: number) => {
+            // Use requestAnimationFrame to ensure DOM updates happen
+            requestAnimationFrame(() => {
+                this.updateHeartsUI(health);
+            });
             if (health <= 0 && !this.isDead) {
                 this.onPlayerDeath();
             }
-        });
+        };
+        this.character.setOnHealthChanged(healthCallback);
         
         // Initial hearts display
-        this.updateHeartsUI(this.character.getHealth());
+        const initialHealth = this.character.getHealth();
+        this.updateHeartsUI(initialHealth);
     }
     
     private updateHeartsUI(health: number): void {
         const heartsContainer = document.getElementById('hearts-container');
-        if (!heartsContainer) return;
+        if (!heartsContainer) {
+            // Try to recreate it
+            this.setupHealthUI();
+            return;
+        }
         
         const maxHealth = this.character.getMaxHealth();
+        // Ensure health is within valid range
+        const clampedHealth = Math.max(0, Math.min(maxHealth, health));
+        
+        // Clear existing hearts
         heartsContainer.innerHTML = '';
         
+        // Create hearts based on current health
+        // Use different emojis for filled vs empty, as emojis don't reliably change color with CSS
         for (let i = 0; i < maxHealth; i++) {
             const heart = document.createElement('div');
+            const isFilled = i < clampedHealth;
             heart.style.cssText = `
                 width: 30px;
                 height: 30px;
@@ -280,9 +296,22 @@ export class Game {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                color: ${i < health ? '#ff0000' : '#666666'};
+                transition: opacity 0.2s ease;
             `;
-            heart.textContent = '❤️';
+            // Use filled heart emoji for filled, empty heart emoji for empty
+            // Or hide empty hearts entirely
+            if (isFilled) {
+                heart.textContent = '❤️';
+                heart.style.opacity = '1';
+            } else {
+                // Use empty heart emoji or hide it
+                heart.textContent = '🤍'; // White heart (empty)
+                heart.style.opacity = '0.3'; // Make it very faint
+                // Alternative: hide completely
+                // heart.style.display = 'none';
+            }
+            heart.setAttribute('data-heart-index', i.toString());
+            heart.setAttribute('data-filled', isFilled.toString());
             heartsContainer.appendChild(heart);
         }
     }
@@ -343,7 +372,6 @@ export class Game {
         // Get bullet spawn node from character
         const spawnNode = this.character.getBulletSpawnNode();
         if (!spawnNode) {
-            console.warn('Bullet spawn node not found');
             return;
         }
         
@@ -448,55 +476,75 @@ export class Game {
             
             // Check collision with local player (if bullet wasn't shot by local player)
             if (bullet.getShooterId() !== localPlayerId) {
-                const characterMesh = this.character.getMesh();
-                const characterWorldPos = new THREE.Vector3();
-                characterMesh.getWorldPosition(characterWorldPos);
-                
-                const bulletPos = bullet.getPosition();
-                const distanceToPlayer = bulletPos.distanceTo(characterWorldPos);
-                
-                // Check if bullet is close to player character (within character bounds)
-                // Character is roughly 0.8 units wide and 1.8 units tall
-                if (distanceToPlayer < 0.6) {
-                    // Additional check: make sure bullet is at reasonable height (not too high/low)
-                    const heightDiff = Math.abs(bulletPos.y - characterWorldPos.y);
-                    if (heightDiff < 2.0) {
-                        // Remote bullet hit local player - notify server (server will broadcast damage)
-                        if (localPlayerId) {
-                            this.networkManager.sendPlayerDamaged(localPlayerId, 1);
-                        }
-                        bullet.dispose();
-                        return false;
+                if (this.checkBulletCharacterCollision(bullet, this.character.getMesh())) {
+                    // Remote bullet hit local player - apply damage immediately for responsiveness
+                    this.character.takeDamage(1);
+                    // Also notify server (server will broadcast damage for synchronization)
+                    if (localPlayerId) {
+                        this.networkManager.sendPlayerDamaged(localPlayerId, 1);
                     }
+                    bullet.dispose();
+                    return false;
                 }
             }
             
             // Check collision with remote players (only if we shot the bullet)
             if (bullet.getShooterId() === localPlayerId) {
                 for (const [id, remotePlayer] of this.remotePlayers.entries()) {
-                    const remotePlayerMesh = remotePlayer.getCharacter().getMesh();
-                    const remotePlayerWorldPos = new THREE.Vector3();
-                    remotePlayerMesh.getWorldPosition(remotePlayerWorldPos);
-                    
-                    const bulletPos = bullet.getPosition();
-                    const distance = bulletPos.distanceTo(remotePlayerWorldPos);
-                    
-                    // Check if bullet is close to remote player character
-                    if (distance < 0.6) {
-                        // Additional check: make sure bullet is at reasonable height
-                        const heightDiff = Math.abs(bulletPos.y - remotePlayerWorldPos.y);
-                        if (heightDiff < 2.0) {
-                            // Local bullet hit remote player - notify server (server will broadcast damage)
-                            this.networkManager.sendPlayerDamaged(id, 1);
-                            bullet.dispose();
-                            return false;
-                        }
+                    if (this.checkBulletCharacterCollision(bullet, remotePlayer.getCharacter().getMesh())) {
+                        // Local bullet hit remote player - notify server (server will broadcast damage)
+                        this.networkManager.sendPlayerDamaged(id, 1);
+                        bullet.dispose();
+                        return false;
                     }
                 }
             }
             
             return true;
         });
+    }
+    
+    /**
+     * Check if a bullet collides with any part of a character mesh using raycasting
+     */
+    private checkBulletCharacterCollision(bullet: Bullet, characterMesh: THREE.Group): boolean {
+        const bulletPos = bullet.getPosition();
+        const bulletPrevPos = bullet.getPreviousPosition();
+        
+        // Create raycaster from previous position to current position
+        const direction = bulletPos.clone().sub(bulletPrevPos).normalize();
+        const distance = bulletPrevPos.distanceTo(bulletPos);
+        
+        // If bullet hasn't moved, skip collision check
+        if (distance < 0.001) {
+            return false;
+        }
+        
+        const raycaster = new THREE.Raycaster();
+        raycaster.set(bulletPrevPos, direction);
+        
+        // Check intersection with all meshes in the character model
+        const meshesToCheck: THREE.Mesh[] = [];
+        characterMesh.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+                meshesToCheck.push(child);
+            }
+        });
+        
+        // Check each mesh for intersection
+        // Use recursive traversal to check all meshes including nested ones (like gun parts)
+        for (const mesh of meshesToCheck) {
+            const intersects = raycaster.intersectObject(mesh, true); // true = recursive, check children too
+            if (intersects.length > 0) {
+                const intersection = intersects[0];
+                // Check if intersection is within the bullet's movement distance
+                if (intersection.distance <= distance + 0.1) { // Small buffer for bullet radius
+                    return true;
+                }
+            }
+        }
+        
+        return false;
     }
 
     private updateConnectionStatus(): void {
@@ -570,6 +618,11 @@ export class Game {
     }
 
     private render(): void {
+        // Update health bar positions for all remote players
+        for (const remotePlayer of this.remotePlayers.values()) {
+            remotePlayer.updateHealthBarPosition(this.camera, this.renderer);
+        }
+        
         this.renderer.render(this.scene, this.camera);
     }
 

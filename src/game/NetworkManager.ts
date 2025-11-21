@@ -68,12 +68,10 @@ export class NetworkManager {
 
     constructor(serverUrl: string = 'http://localhost:3001') {
         this.serverUrl = serverUrl;
-        console.log('NetworkManager initialized with server URL:', serverUrl);
     }
 
     public connect(): void {
         if (this.socket) {
-            console.warn('Already connected to server');
             return;
         }
 
@@ -91,14 +89,12 @@ export class NetworkManager {
         });
 
         this.socket.on('connect', () => {
-            console.log('Connected to server');
             this.isConnected = true;
             this.connectionStatus = ConnectionStatus.CONNECTED;
             this.connectionAttempts = 0;
         });
 
         this.socket.on('disconnect', (reason: string) => {
-            console.log('Disconnected from server:', reason);
             this.isConnected = false;
             if (reason === 'io server disconnect') {
                 // Server disconnected us, don't try to reconnect
@@ -110,30 +106,24 @@ export class NetworkManager {
         });
 
         this.socket.on('connect_error', (error: Error) => {
-            console.error('Connection error:', error);
-            console.error('Attempting to connect to:', this.serverUrl);
             this.connectionStatus = ConnectionStatus.RECONNECTING;
         });
 
         this.socket.on('reconnect_attempt', () => {
-            console.log('Attempting to reconnect...');
             this.connectionStatus = ConnectionStatus.RECONNECTING;
         });
 
         this.socket.on('reconnect', () => {
-            console.log('Reconnected to server');
             this.isConnected = true;
             this.connectionStatus = ConnectionStatus.CONNECTED;
         });
 
         this.socket.on('reconnect_failed', () => {
-            console.error('Failed to reconnect');
             this.connectionStatus = ConnectionStatus.DISCONNECTED;
         });
 
         // Receive initial list of players
         this.socket.on('players', (players: PlayerUpdate[]) => {
-            console.log(`Received ${players.length} existing players`);
             players.forEach(player => {
                 this.addRemotePlayer(player);
             });
@@ -141,7 +131,6 @@ export class NetworkManager {
 
         // Handle new player joining
         this.socket.on('playerJoined', (player: PlayerUpdate) => {
-            console.log(`Player joined: ${player.id}`);
             this.addRemotePlayer(player);
         });
 
@@ -152,7 +141,6 @@ export class NetworkManager {
 
         // Handle player leaving
         this.socket.on('playerLeft', (playerId: string) => {
-            console.log(`Player left: ${playerId}`);
             this.removeRemotePlayer(playerId);
         });
 
@@ -164,7 +152,6 @@ export class NetworkManager {
 
         // Handle tree data from server
         this.socket.on('trees', (treeData: TreeData[]) => {
-            console.log(`Received ${treeData.length} trees from server`);
             this.trees = treeData;
             this.treesReceived = true;
             if (this.onTreesReceivedCallback) {
@@ -174,7 +161,6 @@ export class NetworkManager {
 
         // Handle grass data from server
         this.socket.on('grass', (grassData: GrassData[]) => {
-            console.log(`Received ${grassData.length} grass patches from server`);
             this.grass = grassData;
             this.grassReceived = true;
             if (this.onGrassReceivedCallback) {
