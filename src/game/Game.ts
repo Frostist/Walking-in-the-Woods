@@ -4,6 +4,7 @@ import { SceneManager } from './SceneManager';
 import { Character } from './Character';
 import { NetworkManager, ConnectionStatus } from './NetworkManager';
 import { RemotePlayer } from './RemotePlayer';
+import { Bullet } from './Bullet';
 
 export class Game {
     private scene: THREE.Scene;
@@ -14,10 +15,13 @@ export class Game {
     private character: Character;
     private networkManager: NetworkManager;
     private remotePlayers: Map<string, RemotePlayer> = new Map();
+    private bullets: Bullet[] = [];
     private animationId: number = 0;
     private lastTime: number = 0;
     private lastStatusUpdate: number = 0;
     private statusUpdateInterval: number = 500; // Update status every 500ms
+    private lastShotTime: number = 0;
+    private shotCooldown: number = 100; // Milliseconds between shots
 
     constructor() {
         // Create scene
@@ -95,6 +99,37 @@ export class Game {
 
     private setupEventListeners(): void {
         window.addEventListener('resize', () => this.onWindowResize());
+        
+        // Left-click shooting
+        this.renderer.domElement.addEventListener('mousedown', (e) => {
+            if (e.button === 0) { // Left mouse button
+                this.shoot();
+            }
+        });
+    }
+    
+    private shoot(): void {
+        const now = performance.now();
+        if (now - this.lastShotTime < this.shotCooldown) {
+            return; // Cooldown not expired
+        }
+        this.lastShotTime = now;
+        
+        // Get bullet spawn node from character
+        const spawnNode = this.character.getBulletSpawnNode();
+        if (!spawnNode) {
+            console.warn('Bullet spawn node not found');
+            return;
+        }
+        
+        // Get camera forward direction (where player is looking)
+        const direction = new THREE.Vector3();
+        this.camera.getWorldDirection(direction);
+        direction.normalize();
+        
+        // Create bullet at spawn node position, shooting in camera direction
+        const bullet = new Bullet(this.scene, spawnNode.position, direction);
+        this.bullets.push(bullet);
     }
 
     private onWindowResize(): void {
@@ -154,6 +189,20 @@ export class Game {
 
         // Update monster with player position
         this.sceneManager.updateMonster(deltaTime, playerPosition);
+        
+        // Update bullets
+        this.updateBullets(deltaTime);
+    }
+    
+    private updateBullets(deltaTime: number): void {
+        // Update all bullets and remove dead ones
+        this.bullets = this.bullets.filter(bullet => {
+            const isAlive = bullet.update(deltaTime);
+            if (!isAlive) {
+                bullet.dispose();
+            }
+            return isAlive;
+        });
     }
 
     private updateConnectionStatus(): void {
@@ -233,6 +282,10 @@ export class Game {
     public dispose(): void {
         cancelAnimationFrame(this.animationId);
         this.character.dispose();
+        
+        // Dispose all bullets
+        this.bullets.forEach(bullet => bullet.dispose());
+        this.bullets = [];
         
         // Dispose all remote players
         this.remotePlayers.forEach(player => player.dispose());

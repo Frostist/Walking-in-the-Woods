@@ -1,18 +1,43 @@
 import * as THREE from 'three';
 import { GunLoader } from './GunLoader';
+import { CharacterDataLoader, CharacterExportData } from './CharacterDataLoader';
 
 export class Player2Character {
     private mesh: THREE.Group;
     private scene: THREE.Scene;
     private gun: THREE.Group | null = null;
     private rightHand: THREE.Mesh | null = null;
+    private characterData: CharacterExportData | null = null;
     
     constructor(scene: THREE.Scene) {
         this.scene = scene;
-        this.mesh = this.createCharacter();
+        this.mesh = new THREE.Group();
         // Add to scene
         scene.add(this.mesh);
         this.mesh.position.set(0, 0, 0);
+        // Load character data asynchronously
+        this.loadCharacterData();
+    }
+    
+    private async loadCharacterData(): Promise<void> {
+        try {
+            this.characterData = await CharacterDataLoader.loadCharacterData();
+            this.mesh = this.createCharacter();
+            // Remove old mesh and add new one
+            if (this.scene.children.includes(this.mesh)) {
+                this.scene.remove(this.mesh);
+            }
+            this.scene.add(this.mesh);
+            this.mesh.position.set(0, 0, 0);
+        } catch (error) {
+            console.error('Failed to load character data, using default character:', error);
+            this.mesh = this.createDefaultCharacter();
+            if (this.scene.children.includes(this.mesh)) {
+                this.scene.remove(this.mesh);
+            }
+            this.scene.add(this.mesh);
+            this.mesh.position.set(0, 0, 0);
+        }
     }
     
     public updatePosition(playerPosition: THREE.Vector3, rotationY: number): void {
@@ -24,6 +49,79 @@ export class Player2Character {
     }
     
     private createCharacter(): THREE.Group {
+        if (!this.characterData) {
+            return this.createDefaultCharacter();
+        }
+        
+        const character = new THREE.Group();
+        const partMap = new Map<string, THREE.Mesh>();
+        
+        // Create all parts from JSON data
+        for (const partData of this.characterData.parts) {
+            const geometry = this.createGeometryFromPart(partData);
+            // Player 2 has red torso instead of blue
+            const color = partData.id === 'torso' ? 0xff0000 : partData.color;
+            const material = new THREE.MeshStandardMaterial({
+                color: color,
+                roughness: 0.8
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            
+            mesh.position.set(partData.position.x, partData.position.y, partData.position.z);
+            mesh.rotation.set(partData.rotation.x, partData.rotation.y, partData.rotation.z);
+            mesh.scale.set(partData.scale.x, partData.scale.y, partData.scale.z);
+            
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            
+            // Store part ID in userData for later reference
+            mesh.userData.id = partData.id;
+            
+            // Always visible for player 2
+            mesh.visible = true;
+            
+            character.add(mesh);
+            partMap.set(partData.id, mesh);
+        }
+        
+        // Store reference to right hand for gun attachment
+        this.rightHand = partMap.get('rightHand') || null;
+        
+        return character;
+    }
+    
+    private createGeometryFromPart(part: { geometry: string; type: string }): THREE.BufferGeometry {
+        const size = CharacterDataLoader.getGeometrySize(part as any);
+        
+        switch (part.geometry) {
+            case 'sphere':
+                return new THREE.SphereGeometry(0.25 * size, 16, 16);
+            case 'box':
+                if (part.type === 'torso') {
+                    return new THREE.BoxGeometry(0.32 * size, 0.4 * size, 0.2 * size);
+                } else if (part.type === 'hips') {
+                    return new THREE.BoxGeometry(0.35 * size, 0.2 * size, 0.2 * size);
+                } else if (part.type === 'hand') {
+                    return new THREE.BoxGeometry(0.1 * size, 0.12 * size, 0.05 * size);
+                } else if (part.type === 'foot') {
+                    return new THREE.BoxGeometry(0.12 * size, 0.05 * size, 0.25 * size);
+                }
+                return new THREE.BoxGeometry(0.32 * size, 0.4 * size, 0.2 * size);
+            case 'cylinder':
+                if (part.type === 'neck') {
+                    return new THREE.CylinderGeometry(0.08 * size, 0.1 * size, 0.15 * size, 8);
+                } else if (part.type === 'arm') {
+                    return new THREE.CylinderGeometry(0.08 * size, 0.08 * size, 0.35 * size, 8);
+                } else if (part.type === 'leg') {
+                    return new THREE.CylinderGeometry(0.1 * size, 0.1 * size, 0.45 * size, 8);
+                }
+                return new THREE.CylinderGeometry(0.08 * size, 0.08 * size, 0.35 * size, 8);
+            default:
+                return new THREE.BoxGeometry(0.32 * size, 0.4 * size, 0.2 * size);
+        }
+    }
+    
+    private createDefaultCharacter(): THREE.Group {
         const character = new THREE.Group();
         
         // Head
@@ -223,31 +321,56 @@ export class Player2Character {
     
     public async loadGun(): Promise<void> {
         try {
+            // Ensure character data is loaded
+            if (!this.characterData) {
+                await this.loadCharacterData();
+            }
+            
             const gunModel = await GunLoader.loadGun();
             this.gun = gunModel;
             
-            // Calculate scale based on bounding box (same logic as Character)
-            const bbox = new THREE.Box3();
-            bbox.setFromObject(this.gun);
-            const size = bbox.getSize(new THREE.Vector3());
-            if (size.length() > 0) {
-                const targetLength = 0.4;
-                const currentLength = Math.max(size.x, size.y, size.z);
-                const scale = targetLength / currentLength;
-                this.gun.scale.set(scale, scale, scale);
+            // Use gun data from JSON if available
+            if (this.characterData?.gun) {
+                const gunData = this.characterData.gun;
+                this.gun.scale.set(gunData.scale.x, gunData.scale.y, gunData.scale.z);
+                
+                // Find parent part
+                const parentPart = this.mesh.children.find(child => 
+                    child instanceof THREE.Mesh && child.userData?.id === gunData.parentId
+                ) as THREE.Mesh | undefined;
+                
+                if (parentPart) {
+                    parentPart.add(this.gun);
+                    this.gun.position.set(gunData.position.x, gunData.position.y, gunData.position.z);
+                    this.gun.rotation.set(gunData.rotation.x, gunData.rotation.y, gunData.rotation.z);
+                } else if (this.rightHand) {
+                    // Fallback to right hand
+                    this.rightHand.add(this.gun);
+                    this.gun.position.set(gunData.position.x, gunData.position.y, gunData.position.z);
+                    this.gun.rotation.set(gunData.rotation.x, gunData.rotation.y, gunData.rotation.z);
+                }
             } else {
-                this.gun.scale.set(0.5, 0.5, 0.5);
+                // Fallback to old method
+                const bbox = new THREE.Box3();
+                bbox.setFromObject(this.gun);
+                const size = bbox.getSize(new THREE.Vector3());
+                if (size.length() > 0) {
+                    const targetLength = 0.4;
+                    const currentLength = Math.max(size.x, size.y, size.z);
+                    const scale = targetLength / currentLength;
+                    this.gun.scale.set(scale, scale, scale);
+                } else {
+                    this.gun.scale.set(0.5, 0.5, 0.5);
+                }
+                
+                if (this.rightHand) {
+                    this.rightHand.add(this.gun);
+                    this.gun.position.set(0, 0, -0.15);
+                    this.gun.rotation.set(-Math.PI / 2, -Math.PI / 2, 0);
+                }
             }
             
-            // Attach gun to right hand
-            if (this.rightHand) {
-                this.rightHand.add(this.gun);
-                // Position gun relative to hand (same as Character class)
-                this.gun.position.set(0, 0, -0.15); // Forward from hand
-                // Rotate gun to face forward
-                this.gun.rotation.set(-Math.PI / 2, -Math.PI / 2, 0);
-                this.gun.layers.set(0);
-            }
+            this.gun.layers.set(0);
         } catch (error) {
             // Silently fail - gun loading errors are not critical
         }
