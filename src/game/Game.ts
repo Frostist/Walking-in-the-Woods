@@ -129,8 +129,11 @@ export class Game {
             this.lastStatusUpdate = now;
         }
 
-        // Update scene manager
-        this.sceneManager.update(deltaTime, playerPosition);
+        // Get server-synchronized game time
+        const serverGameTime = this.networkManager.getServerGameTime();
+
+        // Update scene manager with server time (falls back to local time if server time unavailable)
+        this.sceneManager.update(deltaTime, playerPosition, serverGameTime);
 
         // Update monster with player position
         this.sceneManager.updateMonster(deltaTime, playerPosition);

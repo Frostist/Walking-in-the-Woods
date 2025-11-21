@@ -10,6 +10,15 @@ const io = new Server(httpServer, {
     }
 });
 const players = new Map();
+// Game time synchronization - tracks elapsed time for day/night cycle
+// This ensures all players see the same sun/moon position
+const CYCLE_DURATION = 300000; // 5 minutes in milliseconds (matches client)
+let gameStartTime = Date.now();
+// Broadcast game time to all clients every second
+setInterval(() => {
+    const gameTime = Date.now() - gameStartTime;
+    io.emit('gameTime', gameTime);
+}, 1000);
 io.on('connection', (socket) => {
     console.log(`Player connected: ${socket.id}`);
     // Initialize player state
@@ -19,6 +28,9 @@ io.on('connection', (socket) => {
         rotationY: 0
     };
     players.set(socket.id, playerState);
+    // Send current game time to newly connected player
+    const currentGameTime = Date.now() - gameStartTime;
+    socket.emit('gameTime', currentGameTime);
     // Send current players to newly connected player
     const allPlayers = Array.from(players.values());
     socket.emit('players', allPlayers);

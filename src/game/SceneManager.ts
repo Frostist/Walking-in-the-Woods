@@ -15,7 +15,8 @@ export class SceneManager {
     private moonLight: THREE.DirectionalLight | null = null;
     private ambientLight: THREE.AmbientLight | null = null;
     private cycleDuration: number = 300000; // 5 minutes in milliseconds
-    private elapsedTime: number = 0;
+    private elapsedTime: number = 0; // Fallback local time if server time not available
+    private useServerTime: boolean = false; // Whether to use server time or local time
     private sunRadius: number = 150; // Radius of sun/moon orbit - increased to prevent sun going through floor
     private monster: Monster | null = null;
     private isDay: boolean = true;
@@ -211,10 +212,21 @@ export class SceneManager {
         }
     }
 
-    public update(deltaTime: number, playerPosition: THREE.Vector3): void {
+    public update(deltaTime: number, playerPosition: THREE.Vector3, serverGameTime?: number): void {
         // Update day/night cycle
-        this.elapsedTime += deltaTime;
-        const cycleProgress = (this.elapsedTime % this.cycleDuration) / this.cycleDuration;
+        // Use server time if provided, otherwise use local elapsed time
+        let currentTime: number;
+        if (serverGameTime !== undefined && serverGameTime > 0) {
+            currentTime = serverGameTime;
+            this.useServerTime = true;
+        } else {
+            // Fallback to local time if server time not available
+            this.elapsedTime += deltaTime;
+            currentTime = this.elapsedTime;
+            this.useServerTime = false;
+        }
+        
+        const cycleProgress = (currentTime % this.cycleDuration) / this.cycleDuration;
         
         // Calculate sun and moon positions in circular orbits
         // Sun starts at -90 degrees (left horizon) and moves to 90 degrees (right horizon)

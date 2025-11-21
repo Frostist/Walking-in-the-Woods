@@ -30,6 +30,8 @@ export class NetworkManager {
     private lastUpdateTime: number = 0;
     private serverUrl: string;
     private connectionAttempts: number = 0;
+    private serverGameTime: number = 0; // Server-synchronized game time in milliseconds
+    private lastServerTimeUpdate: number = 0; // Local timestamp when we last received server time
 
     constructor(serverUrl: string = 'http://localhost:3001') {
         this.serverUrl = serverUrl;
@@ -120,6 +122,12 @@ export class NetworkManager {
             console.log(`Player left: ${playerId}`);
             this.removeRemotePlayer(playerId);
         });
+
+        // Handle game time synchronization from server
+        this.socket.on('gameTime', (serverTime: number) => {
+            this.serverGameTime = serverTime;
+            this.lastServerTimeUpdate = performance.now();
+        });
     }
 
     public disconnect(): void {
@@ -191,6 +199,21 @@ export class NetworkManager {
 
     public getPlayerId(): string | null {
         return this.socket?.id || null;
+    }
+
+    /**
+     * Get the current synchronized game time from the server.
+     * If we haven't received a server update yet, returns 0.
+     * Otherwise, extrapolates the current time based on the last server update.
+     */
+    public getServerGameTime(): number {
+        if (this.serverGameTime === 0 || this.lastServerTimeUpdate === 0) {
+            return 0; // Haven't received server time yet
+        }
+        
+        // Extrapolate current time based on elapsed time since last server update
+        const timeSinceLastUpdate = performance.now() - this.lastServerTimeUpdate;
+        return this.serverGameTime + timeSinceLastUpdate;
     }
 }
 
