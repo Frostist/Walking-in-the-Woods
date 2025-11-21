@@ -10,6 +10,14 @@ export interface PlayerState {
     isDead: boolean;
 }
 
+// Block data interface
+export interface BlockData {
+    x: number;
+    y: number;
+    z: number;
+    type: string;
+}
+
 // Monster state
 interface MonsterState {
     position: { x: number; y: number; z: number };
@@ -35,12 +43,14 @@ export class MonsterManager {
     private lastMonsterDamager: string | null = null; // Track who last damaged the monster
     private io: Server;
     private players: Map<string, PlayerState>;
+    private blocks: Map<string, BlockData>; // Reference to blocks for collision
     private updateInterval: NodeJS.Timeout | null = null;
     private lastMonsterUpdate: number = Date.now();
 
-    constructor(io: Server, players: Map<string, PlayerState>) {
+    constructor(io: Server, players: Map<string, PlayerState>, blocks: Map<string, BlockData>) {
         this.io = io;
         this.players = players;
+        this.blocks = blocks;
         
         // Initialize monster state
         this.monster = {
@@ -176,10 +186,17 @@ export class MonsterManager {
             const dirX = dx / distance;
             const dirZ = dz / distance;
             
-            // Move towards player
+            // Calculate new position
             const moveDistance = MONSTER_SPEED * (deltaTime / 1000);
-            this.monster.position.x += dirX * moveDistance;
-            this.monster.position.z += dirZ * moveDistance;
+            const newX = this.monster.position.x + dirX * moveDistance;
+            const newZ = this.monster.position.z + dirZ * moveDistance;
+            
+            // Check collision with blocks
+            const finalPos = this.checkBlockCollision(newX, newZ);
+            
+            // Update position
+            this.monster.position.x = finalPos.x;
+            this.monster.position.z = finalPos.z;
             
             // Update rotation to face player
             this.monster.rotationY = Math.atan2(dirX, dirZ);
@@ -280,6 +297,77 @@ export class MonsterManager {
      */
     public isMonsterAlive(): boolean {
         return this.monster.isAlive;
+    }
+    
+    /**
+     * Check collision with blocks and adjust monster position
+     */
+    private checkBlockCollision(newX: number, newZ: number): { x: number; z: number } {
+        const blockSize = 1.0;
+        const monsterRadius = 0.6; // Monster collision radius
+        const monsterY = this.monster.position.y;
+        const monsterHeight = 2.0; // Monster height
+        
+        // Check blocks in area around monster
+        const checkRadius = monsterRadius + blockSize * 0.6;
+        const minX = Math.floor((newX - checkRadius) / blockSize) * blockSize;
+        const maxX = Math.ceil((newX + checkRadius) / blockSize) * blockSize;
+        const minZ = Math.floor((newZ - checkRadius) / blockSize) * blockSize;
+        const maxZ = Math.ceil((newZ + checkRadius) / blockSize) * blockSize;
+        
+        let finalX = newX;
+        let finalZ = newZ;
+        
+        // Check all blocks in the area
+        for (let x = minX; x <= maxX; x += blockSize) {
+            for (let z = minZ; z <= maxZ; z += blockSize) {
+                // Check blocks at monster's Y level (ground level and slightly above)
+                for (let y = Math.floor((monsterY - monsterHeight/2) / blockSize) * blockSize;
+                     y <= Math.ceil((monsterY + monsterHeight/2) / blockSize) * blockSize;
+                     y += blockSize) {
+                    
+                    const blockKey = `${x},${y},${z}`;
+                    if (this.blocks.has(blockKey)) {
+                        const blockMinX = x - blockSize/2;
+                        const blockMaxX = x + blockSize/2;
+                        const blockMinZ = z - blockSize/2;
+                        const blockMaxZ = z + blockSize/2;
+                        
+                        const monsterMinX = finalX - monsterRadius;
+                        const monsterMaxX = finalX + monsterRadius;
+                        const monsterMinZ = finalZ - monsterRadius;
+                        const monsterMaxZ = finalZ + monsterRadius;
+                        
+                        // Check if monster collides with block (horizontal collision only)
+                        if (monsterMaxX > blockMinX && monsterMinX < blockMaxX &&
+                            monsterMaxZ > blockMinZ && monsterMinZ < blockMaxZ) {
+                            
+                            // Push monster out of block
+                            const overlapX = Math.min(monsterMaxX - blockMinX, blockMaxX - monsterMinX);
+                            const overlapZ = Math.min(monsterMaxZ - blockMinZ, blockMaxZ - monsterMinZ);
+                            
+                            if (overlapX < overlapZ) {
+                                // Push out in X direction
+                                if (finalX > x) {
+                                    finalX = blockMaxX + monsterRadius;
+                                } else {
+                                    finalX = blockMinX - monsterRadius;
+                                }
+                            } else {
+                                // Push out in Z direction
+                                if (finalZ > z) {
+                                    finalZ = blockMaxZ + monsterRadius;
+                                } else {
+                                    finalZ = blockMinZ - monsterRadius;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        return { x: finalX, z: finalZ };
     }
 
     public dispose(): void {

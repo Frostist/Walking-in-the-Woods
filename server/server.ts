@@ -123,8 +123,8 @@ function getBlockKey(x: number, y: number, z: number): string {
     return `${x},${y},${z}`;
 }
 
-// Initialize monster manager
-const monsterManager = new MonsterManager(io, players);
+// Initialize monster manager (pass blocks for collision detection)
+const monsterManager = new MonsterManager(io, players, blocks);
 
 // Generate trees once on server startup - all clients will see the same trees
 const TREE_COUNT = 80;

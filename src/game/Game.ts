@@ -62,6 +62,9 @@ export class Game {
         this.blockManager = new BlockManager(this.scene);
         this.raycaster = new THREE.Raycaster();
         
+        // Connect block manager to player controller for collision detection
+        this.playerController.setBlockManager(this.blockManager);
+        
         // Initialize network manager - use environment variable or default to localhost
         const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
         this.networkManager = new NetworkManager(serverUrl);
@@ -417,7 +420,7 @@ export class Game {
         // Explicitly update hearts UI to ensure it's restored
         this.updateHeartsUI(maxHealth);
         
-        // Reset player position to spawn (0, 0, 0)
+        // Reset player position to spawn (0, 1.6, 0) - Y is eye height
         this.playerController.setPosition(0, 1.6, 0);
         
         // Notify server that player has respawned
