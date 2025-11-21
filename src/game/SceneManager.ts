@@ -102,6 +102,13 @@ export class SceneManager {
         this.treeGenerator.generateForestFromData(this.scene, treeData);
     }
 
+    /**
+     * Get all trees for collision detection
+     */
+    public getTrees(): THREE.Group[] {
+        return this.treeGenerator.getTrees();
+    }
+
     private createSun(): void {
         // Create sun geometry
         const sunGeometry = new THREE.SphereGeometry(2, 32, 32);

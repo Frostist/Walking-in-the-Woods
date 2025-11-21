@@ -195,9 +195,12 @@ export class Game {
     }
     
     private updateBullets(deltaTime: number): void {
+        // Get all trees for collision detection
+        const trees = this.sceneManager.getTrees();
+        
         // Update all bullets and remove dead ones
         this.bullets = this.bullets.filter(bullet => {
-            const isAlive = bullet.update(deltaTime);
+            const isAlive = bullet.update(deltaTime, trees);
             if (!isAlive) {
                 bullet.dispose();
             }

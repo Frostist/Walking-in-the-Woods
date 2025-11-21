@@ -24,20 +24,42 @@ export class Character {
     private async loadCharacterData(): Promise<void> {
         try {
             this.characterData = await CharacterDataLoader.loadCharacterData();
+            const oldMesh = this.mesh;
             this.mesh = this.createCharacter();
             // Remove old mesh and add new one
-            if (this.scene.children.includes(this.mesh)) {
-                this.scene.remove(this.mesh);
+            if (oldMesh && this.scene.children.includes(oldMesh)) {
+                this.scene.remove(oldMesh);
             }
-            this.scene.add(this.mesh);
+            if (!this.scene.children.includes(this.mesh)) {
+                this.scene.add(this.mesh);
+            }
             this.mesh.position.set(0, 0, 0);
         } catch (error) {
             console.error('Failed to load character data, using default character:', error);
+            const oldMesh = this.mesh;
             this.mesh = this.createDefaultCharacter();
-            if (this.scene.children.includes(this.mesh)) {
-                this.scene.remove(this.mesh);
+            if (oldMesh && this.scene.children.includes(oldMesh)) {
+                this.scene.remove(oldMesh);
             }
-            this.scene.add(this.mesh);
+            if (!this.scene.children.includes(this.mesh)) {
+                this.scene.add(this.mesh);
+            }
+            this.mesh.position.set(0, 0, 0);
+        }
+    }
+    
+    public async ensureCharacterLoaded(): Promise<void> {
+        if (!this.characterData) {
+            // Load synchronously since data is now embedded
+            this.characterData = await CharacterDataLoader.loadCharacterData();
+            const oldMesh = this.mesh;
+            this.mesh = this.createCharacter();
+            if (oldMesh && this.scene.children.includes(oldMesh)) {
+                this.scene.remove(oldMesh);
+            }
+            if (!this.scene.children.includes(this.mesh)) {
+                this.scene.add(this.mesh);
+            }
             this.mesh.position.set(0, 0, 0);
         }
     }
@@ -163,6 +185,7 @@ export class Character {
             });
             const mesh = new THREE.Mesh(geometry, material);
             
+            // Apply position, rotation, and scale from JSON
             mesh.position.set(partData.position.x, partData.position.y, partData.position.z);
             mesh.rotation.set(partData.rotation.x, partData.rotation.y, partData.rotation.z);
             mesh.scale.set(partData.scale.x, partData.scale.y, partData.scale.z);
@@ -172,6 +195,7 @@ export class Character {
             
             // Store part ID in userData for later reference
             mesh.userData.id = partData.id;
+            mesh.userData.type = partData.type;
             
             // Hide head in first-person
             if (partData.id === 'head') {
@@ -188,34 +212,48 @@ export class Character {
         return character;
     }
     
-    private createGeometryFromPart(part: { geometry: string; type: string }): THREE.BufferGeometry {
-        const size = CharacterDataLoader.getGeometrySize(part as any);
-        
+    private createGeometryFromPart(part: { geometry: string; type: string; id: string }): THREE.BufferGeometry {
+        // Use exact geometry sizes from CharacterBuilder based on part type and ID
         switch (part.geometry) {
             case 'sphere':
-                return new THREE.SphereGeometry(0.25 * size, 16, 16);
+                if (part.type === 'head') {
+                    return new THREE.SphereGeometry(0.25, 16, 16);
+                } else if (part.type === 'shoulder') {
+                    return new THREE.SphereGeometry(0.1, 8, 8);
+                }
+                return new THREE.SphereGeometry(0.25, 16, 16);
             case 'box':
                 if (part.type === 'torso') {
-                    return new THREE.BoxGeometry(0.32 * size, 0.4 * size, 0.2 * size);
+                    return new THREE.BoxGeometry(0.32, 0.4, 0.2);
                 } else if (part.type === 'hips') {
-                    return new THREE.BoxGeometry(0.35 * size, 0.2 * size, 0.2 * size);
+                    return new THREE.BoxGeometry(0.35, 0.2, 0.2);
                 } else if (part.type === 'hand') {
-                    return new THREE.BoxGeometry(0.1 * size, 0.12 * size, 0.05 * size);
+                    return new THREE.BoxGeometry(0.1, 0.12, 0.05);
                 } else if (part.type === 'foot') {
-                    return new THREE.BoxGeometry(0.12 * size, 0.05 * size, 0.25 * size);
+                    return new THREE.BoxGeometry(0.12, 0.05, 0.25);
                 }
-                return new THREE.BoxGeometry(0.32 * size, 0.4 * size, 0.2 * size);
+                return new THREE.BoxGeometry(0.2, 0.2, 0.2); // Default for custom boxes
             case 'cylinder':
                 if (part.type === 'neck') {
-                    return new THREE.CylinderGeometry(0.08 * size, 0.1 * size, 0.15 * size, 8);
+                    return new THREE.CylinderGeometry(0.08, 0.1, 0.15, 8);
                 } else if (part.type === 'arm') {
-                    return new THREE.CylinderGeometry(0.08 * size, 0.08 * size, 0.35 * size, 8);
+                    // Check if it's upper arm or forearm
+                    if (part.id.includes('Upper') || part.id === 'leftUpperArm' || part.id === 'rightUpperArm') {
+                        return new THREE.CylinderGeometry(0.08, 0.08, 0.35, 8);
+                    } else {
+                        return new THREE.CylinderGeometry(0.07, 0.07, 0.3, 8);
+                    }
                 } else if (part.type === 'leg') {
-                    return new THREE.CylinderGeometry(0.1 * size, 0.1 * size, 0.45 * size, 8);
+                    // Check if it's thigh or shin
+                    if (part.id.includes('Thigh') || part.id === 'leftThigh' || part.id === 'rightThigh') {
+                        return new THREE.CylinderGeometry(0.1, 0.1, 0.45, 8);
+                    } else {
+                        return new THREE.CylinderGeometry(0.08, 0.08, 0.4, 8);
+                    }
                 }
-                return new THREE.CylinderGeometry(0.08 * size, 0.08 * size, 0.35 * size, 8);
+                return new THREE.CylinderGeometry(0.1, 0.1, 0.2, 8); // Default for custom cylinders
             default:
-                return new THREE.BoxGeometry(0.32 * size, 0.4 * size, 0.2 * size);
+                return new THREE.BoxGeometry(0.2, 0.2, 0.2);
         }
     }
     
@@ -419,9 +457,23 @@ export class Character {
     
     public async loadGun(): Promise<void> {
         try {
-            // Ensure character data is loaded
-            if (!this.characterData) {
-                await this.loadCharacterData();
+            // Ensure character data and mesh are loaded
+            await this.ensureCharacterLoaded();
+            
+            // Double-check rightHand exists
+            if (!this.rightHand) {
+                // Try to find it in the mesh
+                const findPart = (obj: THREE.Object3D, id: string): THREE.Mesh | undefined => {
+                    if (obj instanceof THREE.Mesh && obj.userData?.id === id) {
+                        return obj;
+                    }
+                    for (const child of obj.children) {
+                        const found = findPart(child, id);
+                        if (found) return found;
+                    }
+                    return undefined;
+                };
+                this.rightHand = findPart(this.mesh, 'rightHand') || null;
             }
             
             const gunModel = await GunLoader.loadGun();
@@ -432,20 +484,51 @@ export class Character {
                 const gunData = this.characterData.gun;
                 this.gun.scale.set(gunData.scale.x, gunData.scale.y, gunData.scale.z);
                 
-                // Find parent part
-                const parentPart = this.mesh.children.find(child => 
-                    child instanceof THREE.Mesh && child.userData?.id === gunData.parentId
-                ) as THREE.Mesh | undefined;
+                // Find parent part - search recursively in case it's nested
+                let parentPart: THREE.Mesh | undefined = undefined;
+                
+                const findPart = (obj: THREE.Object3D, id: string): THREE.Mesh | undefined => {
+                    if (obj instanceof THREE.Mesh && obj.userData?.id === id) {
+                        return obj;
+                    }
+                    for (const child of obj.children) {
+                        const found = findPart(child, id);
+                        if (found) return found;
+                    }
+                    return undefined;
+                };
+                
+                parentPart = findPart(this.mesh, gunData.parentId);
+                
+                // Fallback to stored rightHand reference
+                if (!parentPart && this.rightHand) {
+                    parentPart = this.rightHand;
+                }
                 
                 if (parentPart) {
+                    // Remove gun from any previous parent
+                    if (this.gun.parent) {
+                        this.gun.parent.remove(this.gun);
+                    }
                     parentPart.add(this.gun);
+                    // Position and rotation are relative to parent (rightHand)
                     this.gun.position.set(gunData.position.x, gunData.position.y, gunData.position.z);
                     this.gun.rotation.set(gunData.rotation.x, gunData.rotation.y, gunData.rotation.z);
-                } else if (this.rightHand) {
-                    // Fallback to right hand
-                    this.rightHand.add(this.gun);
-                    this.gun.position.set(gunData.position.x, gunData.position.y, gunData.position.z);
-                    this.gun.rotation.set(gunData.rotation.x, gunData.rotation.y, gunData.rotation.z);
+                    console.log('Gun attached to', gunData.parentId, 'at position', gunData.position);
+                } else {
+                    console.warn('Could not find parent part for gun:', gunData.parentId, 'Available parts:', Array.from(this.mesh.children).map(c => c.userData?.id));
+                    // Fallback: try to attach to rightHand directly
+                    if (this.rightHand) {
+                        if (this.gun.parent) {
+                            this.gun.parent.remove(this.gun);
+                        }
+                        this.rightHand.add(this.gun);
+                        this.gun.position.set(gunData.position.x, gunData.position.y, gunData.position.z);
+                        this.gun.rotation.set(gunData.rotation.x, gunData.rotation.y, gunData.rotation.z);
+                        console.log('Gun attached to rightHand (fallback)');
+                    } else {
+                        console.error('Cannot attach gun: no parent part and no rightHand');
+                    }
                 }
             } else {
                 // Fallback to old method
@@ -478,6 +561,7 @@ export class Character {
                 }
             });
         } catch (error) {
+            console.error('Error loading gun:', error);
             // Silently fail - gun loading errors are not critical
         }
     }
@@ -490,49 +574,69 @@ export class Character {
         // Calculate world position and rotation of bullet spawn node
         const spawnData = this.characterData.bulletSpawnNode;
         
-        // Find the parent part (likely rightHand)
-        const parentPart = this.mesh.children.find(child => 
-            child instanceof THREE.Mesh && child.userData?.id === 'rightHand'
-        ) as THREE.Mesh | undefined;
+        // Helper function to find part recursively
+        const findPart = (obj: THREE.Object3D, id: string): THREE.Object3D | undefined => {
+            if (obj.userData?.id === id) {
+                return obj;
+            }
+            for (const child of obj.children) {
+                const found = findPart(child, id);
+                if (found) return found;
+            }
+            return undefined;
+        };
         
-        if (parentPart) {
-            // Calculate world position relative to parent part
-            const localPos = new THREE.Vector3(
-                spawnData.position.x,
-                spawnData.position.y,
-                spawnData.position.z
-            );
-            const worldPos = new THREE.Vector3();
-            parentPart.localToWorld(worldPos.copy(localPos));
+        // Check if bullet spawn node has a parentId (it might be relative to gun, hand, or character)
+        if (spawnData.parentId) {
+            let parentPart = findPart(this.mesh, spawnData.parentId);
             
-            // Calculate world rotation - combine parent rotation with spawn rotation
-            const parentQuat = new THREE.Quaternion().setFromEuler(parentPart.rotation);
-            const spawnQuat = new THREE.Quaternion().setFromEuler(
-                new THREE.Euler(spawnData.rotation.x, spawnData.rotation.y, spawnData.rotation.z)
-            );
-            const finalQuat = parentQuat.multiply(spawnQuat);
+            // If parent is the gun, find the gun
+            if (!parentPart && spawnData.parentId !== 'character' && spawnData.parentId !== 'scene') {
+                // Try to find gun if parentId refers to gun
+                if (this.gun && this.gun.parent) {
+                    const gunParent = this.gun.parent;
+                    if (gunParent.userData?.id === spawnData.parentId) {
+                        parentPart = gunParent as THREE.Mesh;
+                    }
+                }
+            }
             
-            // Also apply character mesh rotation
-            const characterQuat = new THREE.Quaternion().setFromEuler(this.mesh.rotation);
-            const finalWorldQuat = characterQuat.multiply(finalQuat);
-            const finalWorldRot = new THREE.Euler().setFromQuaternion(finalWorldQuat);
-            
-            // Apply character mesh position
-            worldPos.add(this.mesh.position);
-            
-            return { position: worldPos, rotation: finalWorldRot };
+            if (parentPart) {
+                // Position is relative to parent part
+                const localPos = new THREE.Vector3(
+                    spawnData.position.x,
+                    spawnData.position.y,
+                    spawnData.position.z
+                );
+                const worldPos = new THREE.Vector3();
+                parentPart.localToWorld(worldPos.copy(localPos));
+                
+                // Calculate world rotation
+                const parentQuat = new THREE.Quaternion();
+                parentPart.getWorldQuaternion(parentQuat);
+                const spawnQuat = new THREE.Quaternion().setFromEuler(
+                    new THREE.Euler(spawnData.rotation.x, spawnData.rotation.y, spawnData.rotation.z)
+                );
+                const finalQuat = parentQuat.multiply(spawnQuat);
+                const finalWorldRot = new THREE.Euler().setFromQuaternion(finalQuat);
+                
+                return { position: worldPos, rotation: finalWorldRot };
+            }
         }
         
-        // Fallback: use local position relative to character mesh
-        const worldPos = new THREE.Vector3(
+        // Default: position is relative to character mesh (local space)
+        // This matches how CharacterBuilder exports it when bullet spawn node is a child of character
+        const localPos = new THREE.Vector3(
             spawnData.position.x,
             spawnData.position.y,
             spawnData.position.z
         );
-        this.mesh.localToWorld(worldPos);
+        const worldPos = new THREE.Vector3();
+        this.mesh.localToWorld(worldPos.copy(localPos));
         
-        // Combine character rotation with spawn rotation
-        const characterQuat = new THREE.Quaternion().setFromEuler(this.mesh.rotation);
+        // Calculate world rotation
+        const characterQuat = new THREE.Quaternion();
+        this.mesh.getWorldQuaternion(characterQuat);
         const spawnQuat = new THREE.Quaternion().setFromEuler(
             new THREE.Euler(spawnData.rotation.x, spawnData.rotation.y, spawnData.rotation.z)
         );

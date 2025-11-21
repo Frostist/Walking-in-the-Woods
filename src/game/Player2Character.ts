@@ -67,6 +67,7 @@ export class Player2Character {
             });
             const mesh = new THREE.Mesh(geometry, material);
             
+            // Apply position, rotation, and scale from JSON
             mesh.position.set(partData.position.x, partData.position.y, partData.position.z);
             mesh.rotation.set(partData.rotation.x, partData.rotation.y, partData.rotation.z);
             mesh.scale.set(partData.scale.x, partData.scale.y, partData.scale.z);
@@ -76,6 +77,7 @@ export class Player2Character {
             
             // Store part ID in userData for later reference
             mesh.userData.id = partData.id;
+            mesh.userData.type = partData.type;
             
             // Always visible for player 2
             mesh.visible = true;
@@ -90,34 +92,48 @@ export class Player2Character {
         return character;
     }
     
-    private createGeometryFromPart(part: { geometry: string; type: string }): THREE.BufferGeometry {
-        const size = CharacterDataLoader.getGeometrySize(part as any);
-        
+    private createGeometryFromPart(part: { geometry: string; type: string; id: string }): THREE.BufferGeometry {
+        // Use exact geometry sizes from CharacterBuilder based on part type and ID
         switch (part.geometry) {
             case 'sphere':
-                return new THREE.SphereGeometry(0.25 * size, 16, 16);
+                if (part.type === 'head') {
+                    return new THREE.SphereGeometry(0.25, 16, 16);
+                } else if (part.type === 'shoulder') {
+                    return new THREE.SphereGeometry(0.1, 8, 8);
+                }
+                return new THREE.SphereGeometry(0.25, 16, 16);
             case 'box':
                 if (part.type === 'torso') {
-                    return new THREE.BoxGeometry(0.32 * size, 0.4 * size, 0.2 * size);
+                    return new THREE.BoxGeometry(0.32, 0.4, 0.2);
                 } else if (part.type === 'hips') {
-                    return new THREE.BoxGeometry(0.35 * size, 0.2 * size, 0.2 * size);
+                    return new THREE.BoxGeometry(0.35, 0.2, 0.2);
                 } else if (part.type === 'hand') {
-                    return new THREE.BoxGeometry(0.1 * size, 0.12 * size, 0.05 * size);
+                    return new THREE.BoxGeometry(0.1, 0.12, 0.05);
                 } else if (part.type === 'foot') {
-                    return new THREE.BoxGeometry(0.12 * size, 0.05 * size, 0.25 * size);
+                    return new THREE.BoxGeometry(0.12, 0.05, 0.25);
                 }
-                return new THREE.BoxGeometry(0.32 * size, 0.4 * size, 0.2 * size);
+                return new THREE.BoxGeometry(0.2, 0.2, 0.2); // Default for custom boxes
             case 'cylinder':
                 if (part.type === 'neck') {
-                    return new THREE.CylinderGeometry(0.08 * size, 0.1 * size, 0.15 * size, 8);
+                    return new THREE.CylinderGeometry(0.08, 0.1, 0.15, 8);
                 } else if (part.type === 'arm') {
-                    return new THREE.CylinderGeometry(0.08 * size, 0.08 * size, 0.35 * size, 8);
+                    // Check if it's upper arm or forearm
+                    if (part.id.includes('Upper') || part.id === 'leftUpperArm' || part.id === 'rightUpperArm') {
+                        return new THREE.CylinderGeometry(0.08, 0.08, 0.35, 8);
+                    } else {
+                        return new THREE.CylinderGeometry(0.07, 0.07, 0.3, 8);
+                    }
                 } else if (part.type === 'leg') {
-                    return new THREE.CylinderGeometry(0.1 * size, 0.1 * size, 0.45 * size, 8);
+                    // Check if it's thigh or shin
+                    if (part.id.includes('Thigh') || part.id === 'leftThigh' || part.id === 'rightThigh') {
+                        return new THREE.CylinderGeometry(0.1, 0.1, 0.45, 8);
+                    } else {
+                        return new THREE.CylinderGeometry(0.08, 0.08, 0.4, 8);
+                    }
                 }
-                return new THREE.CylinderGeometry(0.08 * size, 0.08 * size, 0.35 * size, 8);
+                return new THREE.CylinderGeometry(0.1, 0.1, 0.2, 8); // Default for custom cylinders
             default:
-                return new THREE.BoxGeometry(0.32 * size, 0.4 * size, 0.2 * size);
+                return new THREE.BoxGeometry(0.2, 0.2, 0.2);
         }
     }
     

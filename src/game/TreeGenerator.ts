@@ -121,6 +121,10 @@ export class TreeGenerator {
         return this.trees;
     }
 
+    public getTrees(): THREE.Group[] {
+        return this.trees;
+    }
+
     public dispose(): void {
         this.trees.forEach(tree => {
             tree.traverse((child) => {

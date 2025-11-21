@@ -1,4 +1,6 @@
-{
+import { CharacterExportData } from './CharacterDataLoader';
+
+export const CHARACTER_DATA: CharacterExportData = {
   "parts": [
     {
       "id": "head",
@@ -360,12 +362,12 @@
   ],
   "gun": {
     "position": {
-      "x": 0.2874777199537601,
-      "y": 1.1370024733686592,
-      "z": -0.6946267719165558
+      "x": 0,
+      "y": 0,
+      "z": -0.1
     },
     "rotation": {
-      "x": 0.029203673205103725,
+      "x": -1.5415926535897933,
       "y": -1.5707963267948966,
       "z": 0
     },
@@ -388,4 +390,5 @@
       "z": 2.7755575615628914e-17
     }
   }
-}
+};
+

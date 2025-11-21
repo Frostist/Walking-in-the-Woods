@@ -20,6 +20,7 @@ export interface GunData {
 export interface BulletSpawnNode {
     position: { x: number; y: number; z: number };
     rotation: { x: number; y: number; z: number };
+    parentId?: string;
 }
 
 export interface CharacterExportData {
@@ -28,26 +29,19 @@ export interface CharacterExportData {
     bulletSpawnNode: BulletSpawnNode;
 }
 
+import { CHARACTER_DATA } from './CharacterData';
+
 export class CharacterDataLoader {
     private static cachedData: CharacterExportData | null = null;
 
-    public static async loadCharacterData(path: string = '/character-export.json'): Promise<CharacterExportData> {
+    public static async loadCharacterData(): Promise<CharacterExportData> {
         if (this.cachedData) {
             return this.cachedData;
         }
 
-        try {
-            const response = await fetch(path);
-            if (!response.ok) {
-                throw new Error(`Failed to load character data: ${response.statusText}`);
-            }
-            const data = await response.json() as CharacterExportData;
-            this.cachedData = data;
-            return data;
-        } catch (error) {
-            console.error('Error loading character data:', error);
-            throw error;
-        }
+        // Use embedded character data instead of loading from JSON file
+        this.cachedData = CHARACTER_DATA;
+        return this.cachedData;
     }
 
     public static createGeometry(geometryType: string, size: number = 1): THREE.BufferGeometry {

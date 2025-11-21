@@ -8,6 +8,7 @@ export class Bullet {
     private age: number = 0;
     private scene: THREE.Scene;
     private isDisposed: boolean = false;
+    private previousPosition: THREE.Vector3;
 
     constructor(
         scene: THREE.Scene,
@@ -25,6 +26,7 @@ export class Bullet {
         });
         this.mesh = new THREE.Mesh(geometry, material);
         this.mesh.position.copy(position);
+        this.previousPosition = position.clone();
         
         // Set velocity based on direction
         this.velocity = direction.normalize().multiplyScalar(this.speed);
@@ -37,7 +39,7 @@ export class Bullet {
         this.mesh.receiveShadow = false;
     }
 
-    public update(deltaTime: number): boolean {
+    public update(deltaTime: number, trees: THREE.Group[] = []): boolean {
         if (this.isDisposed) return false;
         
         // Update age
@@ -49,12 +51,48 @@ export class Bullet {
             return false;
         }
         
+        // Store previous position for collision detection
+        this.previousPosition.copy(this.mesh.position);
+        
         // Update position
         const deltaSeconds = deltaTime / 1000;
         const movement = this.velocity.clone().multiplyScalar(deltaSeconds);
-        this.mesh.position.add(movement);
+        const newPosition = this.mesh.position.clone().add(movement);
         
-        return true;
+        // Check collision with trees using raycasting
+        if (trees.length > 0) {
+            const raycaster = new THREE.Raycaster();
+            const direction = newPosition.clone().sub(this.previousPosition).normalize();
+            const distance = this.previousPosition.distanceTo(newPosition);
+            
+            raycaster.set(this.previousPosition, direction);
+            
+            // Check intersection with all tree meshes
+            for (const tree of trees) {
+                tree.traverse((child) => {
+                    if (child instanceof THREE.Mesh) {
+                        const intersects = raycaster.intersectObject(child, false);
+                        if (intersects.length > 0) {
+                            const intersection = intersects[0];
+                            // Check if intersection is within the movement distance
+                            if (intersection.distance <= distance) {
+                                // Bullet hit a tree - stop it
+                                this.dispose();
+                                return false;
+                            }
+                        }
+                    }
+                });
+                if (this.isDisposed) return false;
+            }
+        }
+        
+        // Move bullet to new position if not disposed
+        if (!this.isDisposed) {
+            this.mesh.position.copy(newPosition);
+        }
+        
+        return !this.isDisposed;
     }
 
     public dispose(): void {
