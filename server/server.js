@@ -147,9 +147,10 @@ io.on('connection', (socket) => {
     socket.emit('trees', trees);
     // Send grass data to newly connected player
     socket.emit('grass', grass);
-    // Send current blocks to newly connected player
+    // Send current blocks to newly connected player (server is authoritative)
     const allBlocks = Array.from(blocks.values());
     socket.emit('blocks', allBlocks);
+    console.log(`Sent ${allBlocks.length} blocks to new player ${socket.id}`);
     // Send current players to newly connected player
     const allPlayers = Array.from(players.values());
     socket.emit('players', allPlayers);
@@ -242,23 +243,35 @@ io.on('connection', (socket) => {
             });
         }
     });
-    // Handle block placement
+    // Handle block placement (server is authoritative)
     socket.on('blockPlaced', (blockData) => {
         const key = getBlockKey(blockData.x, blockData.y, blockData.z);
         // Check if block already exists (prevent duplicates)
         if (!blocks.has(key)) {
+            // Store block on server (server is authoritative)
             blocks.set(key, blockData);
-            // Broadcast to all other players
+            // Broadcast to all other players (placing player already has it locally)
             socket.broadcast.emit('blockPlaced', blockData);
+            console.log(`Block placed at (${blockData.x}, ${blockData.y}, ${blockData.z}) by ${socket.id}. Total blocks: ${blocks.size}`);
+        }
+        else {
+            // Block already exists - reject placement
+            console.log(`Block placement rejected at (${blockData.x}, ${blockData.y}, ${blockData.z}) - already exists`);
         }
     });
-    // Handle block removal
+    // Handle block removal (server is authoritative)
     socket.on('blockRemoved', (blockData) => {
         const key = getBlockKey(blockData.x, blockData.y, blockData.z);
         if (blocks.has(key)) {
+            // Remove block from server (server is authoritative)
             blocks.delete(key);
-            // Broadcast to all other players
+            // Broadcast to all other players (removing player already removed it locally)
             socket.broadcast.emit('blockRemoved', blockData);
+            console.log(`Block removed at (${blockData.x}, ${blockData.y}, ${blockData.z}) by ${socket.id}. Total blocks: ${blocks.size}`);
+        }
+        else {
+            // Block doesn't exist - reject removal
+            console.log(`Block removal rejected at (${blockData.x}, ${blockData.y}, ${blockData.z}) - doesn't exist`);
         }
     });
     // Handle player disconnect
