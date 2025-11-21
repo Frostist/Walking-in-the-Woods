@@ -105,7 +105,7 @@ export class NetworkManager {
             }
         });
 
-        this.socket.on('connect_error', (error: Error) => {
+        this.socket.on('connect_error', () => {
             this.connectionStatus = ConnectionStatus.RECONNECTING;
         });
 
