@@ -19,9 +19,11 @@ export class SceneManager {
     private sunRadius: number = 150; // Radius of sun/moon orbit - increased to prevent sun going through floor
     private monster: Monster | null = null;
     private isDay: boolean = true;
+    private isMobile: boolean = false;
 
-    constructor(scene: THREE.Scene) {
+    constructor(scene: THREE.Scene, isMobile: boolean = false) {
         this.scene = scene;
+        this.isMobile = isMobile;
         this.treeGenerator = new TreeGenerator();
     }
 
@@ -37,9 +39,10 @@ export class SceneManager {
         // Add directional light (sun) - will move with sun
         this.directionalLight = new THREE.DirectionalLight(0xffffee, 0.9);
         this.directionalLight.castShadow = true;
-        // Higher resolution shadow maps for sharper, more realistic shadows
-        this.directionalLight.shadow.mapSize.width = 8192;
-        this.directionalLight.shadow.mapSize.height = 8192;
+        // Lower resolution shadow maps on mobile for better performance
+        const sunShadowResolution = this.isMobile ? 2048 : 8192;
+        this.directionalLight.shadow.mapSize.width = sunShadowResolution;
+        this.directionalLight.shadow.mapSize.height = sunShadowResolution;
         // Optimized shadow camera bounds - tighter near/far for better precision
         this.directionalLight.shadow.camera.near = 0.1;
         this.directionalLight.shadow.camera.far = 200;
@@ -60,9 +63,10 @@ export class SceneManager {
         // Add directional light (moon) - will move with moon
         this.moonLight = new THREE.DirectionalLight(0xaaaaff, 0.3);
         this.moonLight.castShadow = true;
-        // Higher resolution for moon shadows too
-        this.moonLight.shadow.mapSize.width = 4096;
-        this.moonLight.shadow.mapSize.height = 4096;
+        // Lower resolution on mobile for better performance
+        const moonShadowResolution = this.isMobile ? 1024 : 4096;
+        this.moonLight.shadow.mapSize.width = moonShadowResolution;
+        this.moonLight.shadow.mapSize.height = moonShadowResolution;
         // Optimized shadow camera bounds
         this.moonLight.shadow.camera.near = 0.1;
         this.moonLight.shadow.camera.far = 200;
@@ -84,8 +88,10 @@ export class SceneManager {
         this.createSun();
         this.createMoon();
 
-        // Generate forest
-        this.treeGenerator.generateForest(this.scene, 80, 60);
+        // Generate forest - fewer trees on mobile for better performance
+        const treeCount = this.isMobile ? 50 : 80;
+        const treeSpread = this.isMobile ? 50 : 60;
+        this.treeGenerator.generateForest(this.scene, treeCount, treeSpread);
 
         // Create monster - spawn it away from player (if feature flag is enabled)
         if (FeatureFlags.MONSTER_ENABLED) {

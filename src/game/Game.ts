@@ -4,6 +4,7 @@ import { SceneManager } from './SceneManager';
 import { Character } from './Character';
 import { NetworkManager, ConnectionStatus } from './NetworkManager';
 import { RemotePlayer } from './RemotePlayer';
+import { TouchController } from './TouchController';
 
 export class Game {
     private scene: THREE.Scene;
@@ -18,8 +19,13 @@ export class Game {
     private lastTime: number = 0;
     private lastStatusUpdate: number = 0;
     private statusUpdateInterval: number = 500; // Update status every 500ms
+    private touchController: TouchController | null = null;
+    private isMobile: boolean = false;
 
     constructor() {
+        // Detect mobile device
+        this.isMobile = this.detectMobile();
+        
         // Create scene
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x87ceeb); // Sky blue
@@ -27,30 +33,55 @@ export class Game {
 
         // Create camera
         const aspect = window.innerWidth / window.innerHeight;
-        this.camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
+        // Adjust FOV for mobile (slightly wider for better view)
+        const fov = this.isMobile ? 80 : 75;
+        this.camera = new THREE.PerspectiveCamera(fov, aspect, 0.1, 1000);
         this.camera.position.set(0, 1.6, 0); // Eye height
         // Make sure camera looks slightly down to see the ground
         this.camera.rotation.x = -0.1;
         // Set camera to only see layer 0 (character will be on layer 1 in first-person to hide it but allow shadows)
         this.camera.layers.set(0);
 
-        // Create renderer
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        // Create renderer with mobile optimizations
+        this.renderer = new THREE.WebGLRenderer({ antialias: !this.isMobile }); // Disable antialiasing on mobile for performance
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        // Lower pixel ratio on mobile for better performance
+        const pixelRatio = this.isMobile ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2);
+        this.renderer.setPixelRatio(pixelRatio);
         this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows for realistic look
+        // Use simpler shadow type on mobile for performance
+        this.renderer.shadowMap.type = this.isMobile ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
         this.renderer.shadowMap.autoUpdate = true;
         this.renderer.shadowMap.needsUpdate = true;
 
+        // Create touch controller if on mobile
+        if (this.isMobile) {
+            this.touchController = new TouchController();
+        }
+
         // Create managers
-        this.playerController = new PlayerController(this.camera, this.renderer.domElement);
-        this.sceneManager = new SceneManager(this.scene);
+        this.playerController = new PlayerController(this.camera, this.renderer.domElement, this.touchController);
+        this.sceneManager = new SceneManager(this.scene, this.isMobile);
         this.character = new Character(this.camera, this.scene);
         
         // Initialize network manager - use environment variable or default to localhost
         const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
         this.networkManager = new NetworkManager(serverUrl);
+    }
+    
+    private detectMobile(): boolean {
+        // Check for touch capability
+        const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        
+        // Check user agent for mobile devices
+        const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+        const mobileRegex = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i;
+        const isMobileUA = mobileRegex.test(userAgent.toLowerCase());
+        
+        // Also check screen size (small screens are likely mobile)
+        const isSmallScreen = window.innerWidth < 768;
+        
+        return hasTouch && (isMobileUA || isSmallScreen);
     }
 
     public init(): void {
@@ -58,6 +89,12 @@ export class Game {
         const container = document.getElementById('canvas-container');
         if (container) {
             container.appendChild(this.renderer.domElement);
+        }
+
+        // Enable touch controller if on mobile
+        if (this.isMobile && this.touchController) {
+            this.touchController.enable();
+            this.setupMobileUI();
         }
 
         // Setup scene
@@ -74,6 +111,43 @@ export class Game {
 
         // Start game loop
         this.gameLoop(0);
+    }
+    
+    private setupMobileUI(): void {
+        // Create camera mode toggle button for mobile
+        const cameraToggleButton = document.createElement('div');
+        cameraToggleButton.id = 'camera-toggle-button';
+        cameraToggleButton.innerHTML = 'CAM';
+        cameraToggleButton.style.cssText = `
+            position: fixed;
+            right: 20px;
+            bottom: 140px;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: rgba(100, 100, 255, 0.3);
+            border: 2px solid rgba(100, 100, 255, 0.6);
+            display: ${this.isMobile ? 'flex' : 'none'};
+            z-index: 1000;
+            touch-action: none;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+        `;
+        
+        cameraToggleButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.playerController.toggleCameraMode();
+            cameraToggleButton.style.background = 'rgba(100, 100, 255, 0.5)';
+            setTimeout(() => {
+                cameraToggleButton.style.background = 'rgba(100, 100, 255, 0.3)';
+            }, 200);
+        }, { passive: false });
+        
+        document.body.appendChild(cameraToggleButton);
     }
 
     private setupEventListeners(): void {
@@ -216,6 +290,12 @@ export class Game {
     public dispose(): void {
         cancelAnimationFrame(this.animationId);
         this.character.dispose();
+        
+        // Dispose touch controller
+        if (this.touchController) {
+            this.touchController.dispose();
+            this.touchController = null;
+        }
         
         // Dispose all remote players
         this.remotePlayers.forEach(player => player.dispose());

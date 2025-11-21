@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Game Test - Three.js</title>
     <style>
         * {
@@ -15,6 +15,11 @@
             overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: #000;
+            /* Prevent touch scrolling on mobile */
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
         
         #canvas-container {
@@ -48,6 +53,31 @@
         #info li {
             margin: 3px 0;
             font-size: 12px;
+        }
+        
+        /* Hide mobile controls on desktop */
+        @media (min-width: 769px) {
+            #joystick-area,
+            #camera-area,
+            #sprint-button,
+            #camera-toggle-button {
+                display: none !important;
+            }
+        }
+        
+        /* Ensure mobile controls are visible on mobile */
+        @media (max-width: 768px) {
+            #joystick-area,
+            #camera-area,
+            #sprint-button,
+            #camera-toggle-button {
+                display: block;
+            }
+            
+            #sprint-button,
+            #camera-toggle-button {
+                display: flex;
+            }
         }
     </style>
 </head>
