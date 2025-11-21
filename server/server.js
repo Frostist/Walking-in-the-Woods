@@ -6,8 +6,85 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {
         origin: "*", // In production, specify your client URL
-        methods: ["GET", "POST"]
-    }
+        methods: ["GET", "POST"],
+        credentials: true
+    },
+    transports: ['websocket', 'polling'], // Allow both transports for Railway compatibility
+    allowEIO3: true // Allow Engine.IO v3 clients
+});
+// Status endpoint - shows server is online and player count
+app.get('/', (req, res) => {
+    const playerCount = players.size;
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Game Server Status</title>
+            <style>
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100vh;
+                    margin: 0;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                }
+                .container {
+                    text-align: center;
+                    padding: 2rem;
+                    background: rgba(255, 255, 255, 0.1);
+                    border-radius: 20px;
+                    backdrop-filter: blur(10px);
+                    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+                }
+                h1 {
+                    margin: 0 0 1rem 0;
+                    font-size: 2.5rem;
+                }
+                .status {
+                    font-size: 1.5rem;
+                    margin: 1rem 0;
+                }
+                .status-indicator {
+                    display: inline-block;
+                    width: 12px;
+                    height: 12px;
+                    background: #4ade80;
+                    border-radius: 50%;
+                    margin-right: 8px;
+                    animation: pulse 2s infinite;
+                }
+                @keyframes pulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.5; }
+                }
+                .player-count {
+                    font-size: 3rem;
+                    font-weight: bold;
+                    margin: 1rem 0;
+                    color: #fbbf24;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Game Server</h1>
+                <div class="status">
+                    <span class="status-indicator"></span>
+                    Online
+                </div>
+                <div class="player-count">${playerCount}</div>
+                <div style="font-size: 1.2rem; margin-top: 0.5rem;">
+                    ${playerCount === 1 ? 'player' : 'players'} connected
+                </div>
+            </div>
+        </body>
+        </html>
+    `);
 });
 const players = new Map();
 // Game time synchronization - tracks elapsed time for day/night cycle

@@ -16,7 +16,6 @@ export class SceneManager {
     private ambientLight: THREE.AmbientLight | null = null;
     private cycleDuration: number = 300000; // 5 minutes in milliseconds
     private elapsedTime: number = 0; // Fallback local time if server time not available
-    private useServerTime: boolean = false; // Whether to use server time or local time
     private sunRadius: number = 150; // Radius of sun/moon orbit - increased to prevent sun going through floor
     private monster: Monster | null = null;
     private isDay: boolean = true;
@@ -218,12 +217,10 @@ export class SceneManager {
         let currentTime: number;
         if (serverGameTime !== undefined && serverGameTime > 0) {
             currentTime = serverGameTime;
-            this.useServerTime = true;
         } else {
             // Fallback to local time if server time not available
             this.elapsedTime += deltaTime;
             currentTime = this.elapsedTime;
-            this.useServerTime = false;
         }
         
         const cycleProgress = (currentTime % this.cycleDuration) / this.cycleDuration;
