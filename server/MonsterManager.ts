@@ -32,6 +32,7 @@ const MONSTER_ATTACK_COOLDOWN = 1000; // 1 second between attacks (per player)
 export class MonsterManager {
     private monster: MonsterState;
     private monsterAttackCooldowns: Map<string, number> = new Map();
+    private lastMonsterDamager: string | null = null; // Track who last damaged the monster
     private io: Server;
     private players: Map<string, PlayerState>;
     private updateInterval: NodeJS.Timeout | null = null;
@@ -188,9 +189,14 @@ export class MonsterManager {
         this.monster.position.y = 1.0;
     }
 
-    public damageMonster(damage: number): void {
+    public damageMonster(damage: number, attackerId?: string): boolean {
         if (!this.monster.isAlive) {
-            return; // Already dead
+            return false; // Already dead
+        }
+        
+        // Track who dealt the damage
+        if (attackerId) {
+            this.lastMonsterDamager = attackerId;
         }
         
         this.monster.health = Math.max(0, this.monster.health - damage);
@@ -206,13 +212,30 @@ export class MonsterManager {
             setTimeout(() => {
                 this.respawnMonster();
             }, MONSTER_RESPAWN_TIME);
+            
+            return true; // Monster was killed
         } else {
             // Broadcast health update
             this.io.emit('monsterHealthUpdate', {
                 health: this.monster.health,
                 maxHealth: this.monster.maxHealth
             });
+            return false; // Monster still alive
         }
+    }
+    
+    /**
+     * Get the last player who damaged the monster (for kill attribution)
+     */
+    public getLastMonsterDamager(): string | null {
+        return this.lastMonsterDamager;
+    }
+    
+    /**
+     * Clear the last monster damager (after recording kill)
+     */
+    public clearLastMonsterDamager(): void {
+        this.lastMonsterDamager = null;
     }
 
     private respawnMonster(): void {
@@ -242,6 +265,21 @@ export class MonsterManager {
 
     public cleanupPlayerCooldown(playerId: string): void {
         this.monsterAttackCooldowns.delete(playerId);
+    }
+    
+    /**
+     * Check if a player is dead
+     */
+    public isPlayerDead(playerId: string): boolean {
+        const player = this.players.get(playerId);
+        return player ? (player.isDead || player.health <= 0) : false;
+    }
+    
+    /**
+     * Check if monster is alive
+     */
+    public isMonsterAlive(): boolean {
+        return this.monster.isAlive;
     }
 
     public dispose(): void {

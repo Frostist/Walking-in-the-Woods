@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { generateTrees, generateGrass } from './TreeGenerator.js';
 import { MonsterManager } from './MonsterManager.js';
+import { DatabaseManager } from './DatabaseManager.js';
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -90,6 +91,15 @@ app.get('/', (req, res) => {
 });
 // Store connected players
 const players = new Map();
+// Track last damager for each player (for kill attribution)
+const lastDamager = new Map(); // playerId -> attackerId
+// Initialize database manager
+const dbManager = new DatabaseManager();
+const blocks = new Map();
+// Helper function to get block key
+function getBlockKey(x, y, z) {
+    return `${x},${y},${z}`;
+}
 // Initialize monster manager
 const monsterManager = new MonsterManager(io, players);
 // Generate trees once on server startup - all clients will see the same trees
@@ -117,7 +127,10 @@ io.on('connection', (socket) => {
     const playerState = {
         id: socket.id,
         position: { x: 0, y: 0, z: 0 },
-        rotationY: 0
+        rotationY: 0,
+        health: 5, // 5 hearts
+        maxHealth: 5,
+        isDead: false
     };
     players.set(socket.id, playerState);
     // Send current game time to newly connected player
@@ -127,6 +140,9 @@ io.on('connection', (socket) => {
     socket.emit('trees', trees);
     // Send grass data to newly connected player
     socket.emit('grass', grass);
+    // Send current blocks to newly connected player
+    const allBlocks = Array.from(blocks.values());
+    socket.emit('blocks', allBlocks);
     // Send current players to newly connected player
     const allPlayers = Array.from(players.values());
     socket.emit('players', allPlayers);
@@ -171,15 +187,72 @@ io.on('connection', (socket) => {
     });
     // Handle player damage events
     socket.on('playerDamaged', (data) => {
+        // Track who dealt the damage (for kill attribution)
+        if (data.targetPlayerId !== socket.id) {
+            // Only track if it's not self-damage
+            lastDamager.set(data.targetPlayerId, socket.id);
+        }
+        // Update player health on server
+        const wasAlive = !monsterManager.isPlayerDead(data.targetPlayerId);
+        monsterManager.updatePlayerHealth(data.targetPlayerId, data.damage);
+        const isNowDead = monsterManager.isPlayerDead(data.targetPlayerId);
+        // If player just died, record the kill
+        if (wasAlive && isNowDead) {
+            const killerId = lastDamager.get(data.targetPlayerId);
+            if (killerId && killerId !== data.targetPlayerId) {
+                // Record player kill
+                dbManager.recordKill(killerId, 'player', data.targetPlayerId);
+                // Notify all clients about the kill
+                io.emit('playerKilled', {
+                    killerId: killerId,
+                    victimId: data.targetPlayerId
+                });
+            }
+            // Clear the last damager for this player
+            lastDamager.delete(data.targetPlayerId);
+        }
         // Broadcast damage event to all players (including the damaged player for synchronization)
         io.emit('playerDamaged', {
             playerId: data.targetPlayerId,
             damage: data.damage
         });
     });
+    // Handle player respawn
+    socket.on('playerRespawned', () => {
+        monsterManager.respawnPlayer(socket.id);
+    });
     // Handle monster damage events
     socket.on('monsterDamaged', (data) => {
-        monsterManager.damageMonster(data.damage);
+        const wasAlive = monsterManager.isMonsterAlive();
+        const killed = monsterManager.damageMonster(data.damage, socket.id);
+        // If monster just died, record the kill
+        if (wasAlive && killed) {
+            // Record monster kill
+            dbManager.recordKill(socket.id, 'monster');
+            // Notify all clients about the kill
+            io.emit('monsterKilled', {
+                killerId: socket.id
+            });
+        }
+    });
+    // Handle block placement
+    socket.on('blockPlaced', (blockData) => {
+        const key = getBlockKey(blockData.x, blockData.y, blockData.z);
+        // Check if block already exists (prevent duplicates)
+        if (!blocks.has(key)) {
+            blocks.set(key, blockData);
+            // Broadcast to all other players
+            socket.broadcast.emit('blockPlaced', blockData);
+        }
+    });
+    // Handle block removal
+    socket.on('blockRemoved', (blockData) => {
+        const key = getBlockKey(blockData.x, blockData.y, blockData.z);
+        if (blocks.has(key)) {
+            blocks.delete(key);
+            // Broadcast to all other players
+            socket.broadcast.emit('blockRemoved', blockData);
+        }
     });
     // Handle player disconnect
     socket.on('disconnect', () => {
@@ -190,6 +263,32 @@ io.on('connection', (socket) => {
         // Notify other players
         io.emit('playerLeft', socket.id);
     });
+});
+// Add JSON body parser middleware (must be before routes)
+app.use(express.json());
+// Leaderboard API endpoint
+app.get('/api/leaderboard', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 10;
+        const leaderboard = await dbManager.getLeaderboard(limit);
+        res.json(leaderboard);
+    }
+    catch (error) {
+        console.error('Error fetching leaderboard:', error);
+        res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    }
+});
+// Player stats API endpoint
+app.get('/api/player/:playerId/stats', async (req, res) => {
+    try {
+        const { playerId } = req.params;
+        const stats = await dbManager.getPlayerKills(playerId);
+        res.json(stats);
+    }
+    catch (error) {
+        console.error('Error fetching player stats:', error);
+        res.status(500).json({ error: 'Failed to fetch player stats' });
+    }
 });
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {

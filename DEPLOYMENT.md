@@ -58,11 +58,18 @@ You can also deploy the client to:
 
 Make sure to set `VITE_SERVER_URL` environment variable to your Railway server URL before building.
 
+### Database Setup for Railway
+
+1. **Add PostgreSQL Service**: In your Railway project, click "New" → "Database" → "Add PostgreSQL"
+2. **Get Connection String**: Railway will automatically set the `DATABASE_URL` environment variable
+3. **Verify**: The server will automatically create the required tables on startup
+
 ### Testing Your Railway Deployment
 
 1. **Server Status**: Visit your Railway server URL - you should see the status page showing "Online" and player count
 2. **Client Connection**: Open your deployed client and check the browser console for connection status
 3. **Multiplayer**: Open multiple browser windows/tabs to test multiplayer functionality
+4. **Leaderboard**: Press `L` in-game to open the leaderboard (kills will be recorded as you play)
 
 ---
 
@@ -75,15 +82,74 @@ This guide will help you set up the game server and client on a Linux server in 
 - Node.js (v18 or higher) and npm installed
 - PM2 installed globally (`npm install -g pm2`)
 - Apache2 installed (for serving the client and proxying WebSocket connections)
+- PostgreSQL database (for leaderboard functionality)
 
-## Step 1: Install Server Dependencies
+## Step 1: Set Up PostgreSQL Database
+
+The leaderboard feature requires a PostgreSQL database. You can use a local PostgreSQL instance or a cloud database service.
+
+### Option A: Local PostgreSQL
+
+1. **Install PostgreSQL** (if not already installed):
+```bash
+sudo apt update
+sudo apt install postgresql postgresql-contrib
+```
+
+2. **Create database and user**:
+```bash
+sudo -u postgres psql
+```
+
+Then in the PostgreSQL prompt:
+```sql
+CREATE DATABASE game;
+CREATE USER gameuser WITH PASSWORD 'your_secure_password';
+GRANT ALL PRIVILEGES ON DATABASE game TO gameuser;
+\q
+```
+
+### Option B: Cloud Database (Recommended for Production)
+
+Use a managed PostgreSQL service like:
+- Railway PostgreSQL
+- Supabase
+- AWS RDS
+- Heroku Postgres
+- DigitalOcean Managed Databases
+
+Get the connection string from your provider.
+
+### Configure Database Connection
+
+Set the database connection string as an environment variable. The server will automatically create the required tables on startup.
+
+For Railway, add the `DATABASE_URL` environment variable in your Railway project settings.
+
+For self-hosted, add to your PM2 ecosystem config or `.env` file:
+
+```bash
+# In server/.env or PM2 ecosystem.config.js
+DATABASE_URL=postgresql://gameuser:your_secure_password@localhost:5432/game
+```
+
+Or set individual variables:
+```bash
+DB_USER=gameuser
+DB_PASSWORD=your_secure_password
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=game
+```
+
+## Step 2: Install Server Dependencies
 
 ```bash
 cd /var/www/server
 npm install
 ```
 
-## Step 2: Build the Client
+## Step 3: Build the Client
 
 ```bash
 cd /var/www
@@ -93,7 +159,7 @@ npm run build
 
 This creates a `dist/` folder with the built client files.
 
-## Step 3: Configure Environment Variables
+## Step 4: Configure Environment Variables
 
 Create a `.env` file in the client root (or set environment variables):
 
@@ -109,7 +175,7 @@ Then rebuild:
 npm run build
 ```
 
-## Step 4: Set Up PM2 for the Server
+## Step 5: Set Up PM2 for the Server
 
 Create a PM2 ecosystem file:
 
@@ -125,7 +191,14 @@ module.exports = {
     exec_mode: 'fork',
     env: {
       NODE_ENV: 'production',
-      PORT: 3001
+      PORT: 3001,
+      DATABASE_URL: 'postgresql://gameuser:your_secure_password@localhost:5432/game'
+      // Or set individual DB variables:
+      // DB_USER: 'gameuser',
+      // DB_PASSWORD: 'your_secure_password',
+      // DB_HOST: 'localhost',
+      // DB_PORT: '5432',
+      // DB_NAME: 'game'
     },
     error_file: './logs/err.log',
     out_file: './logs/out.log',
@@ -148,7 +221,7 @@ pm2 save
 pm2 startup  # Follow instructions to enable auto-start on reboot
 ```
 
-## Step 5: Configure Apache2
+## Step 6: Configure Apache2
 
 ### Enable Required Apache Modules
 
@@ -262,7 +335,7 @@ If the above doesn't work, try this simpler configuration:
 </VirtualHost>
 ```
 
-## Step 6: Update Server CORS Settings
+## Step 7: Update Server CORS Settings
 
 If using HTTPS or a specific domain, update the server CORS:
 
@@ -282,7 +355,7 @@ Then restart PM2:
 pm2 restart game-server
 ```
 
-## Step 7: Firewall Configuration
+## Step 8: Firewall Configuration
 
 Make sure ports are open:
 
@@ -295,7 +368,7 @@ sudo ufw allow 443/tcp
 sudo ufw allow 3001/tcp
 ```
 
-## Step 8: SSL/HTTPS (Optional but Recommended)
+## Step 9: SSL/HTTPS (Optional but Recommended)
 
 Install Certbot for Let's Encrypt SSL with Apache:
 

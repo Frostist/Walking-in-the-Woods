@@ -5,6 +5,8 @@ import { Character } from './Character';
 import { NetworkManager, ConnectionStatus } from './NetworkManager';
 import { RemotePlayer } from './RemotePlayer';
 import { Bullet } from './Bullet';
+import { BlockManager } from './BlockManager';
+import { Leaderboard } from './Leaderboard';
 
 export class Game {
     private scene: THREE.Scene;
@@ -16,6 +18,9 @@ export class Game {
     private networkManager: NetworkManager;
     private remotePlayers: Map<string, RemotePlayer> = new Map();
     private bullets: Bullet[] = [];
+    private blockManager: BlockManager;
+    private raycaster: THREE.Raycaster;
+    private leaderboard: Leaderboard;
     private animationId: number = 0;
     private lastTime: number = 0;
     private lastStatusUpdate: number = 0;
@@ -54,10 +59,18 @@ export class Game {
         this.playerController = new PlayerController(this.camera, this.renderer.domElement);
         this.sceneManager = new SceneManager(this.scene);
         this.character = new Character(this.camera, this.scene);
+        this.blockManager = new BlockManager(this.scene);
+        this.raycaster = new THREE.Raycaster();
         
         // Initialize network manager - use environment variable or default to localhost
         const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
         this.networkManager = new NetworkManager(serverUrl);
+        
+        // Initialize leaderboard
+        this.leaderboard = new Leaderboard(serverUrl);
+        
+        // Initialize leaderboard
+        this.leaderboard = new Leaderboard(serverUrl);
     }
 
     public async init(): Promise<void> {
@@ -149,6 +162,25 @@ export class Game {
         // Setup callback for monster health updates
         this.networkManager.onMonsterHealthUpdate((health, maxHealth) => {
             this.sceneManager.updateMonsterHealth(health, maxHealth);
+        });
+
+        // Setup callback for blocks from server
+        this.networkManager.onBlocksReceived((blocks) => {
+            blocks.forEach(block => {
+                this.blockManager.addBlockFromNetwork(block);
+            });
+            this.updateLoadingProgress(95, 'Loading blocks...');
+        });
+
+        // Setup callback for block placement from other players
+        this.networkManager.onBlockPlaced((blockData) => {
+            // Don't add block if we placed it (we already added it locally)
+            this.blockManager.addBlockFromNetwork(blockData);
+        });
+
+        // Setup callback for block removal from other players
+        this.networkManager.onBlockRemoved((blockData) => {
+            this.blockManager.removeBlockFromNetwork(blockData);
         });
 
         // Setup event listeners
@@ -246,43 +278,31 @@ export class Game {
         `;
         document.body.appendChild(heartsContainer);
         
-        // Create respawn button (initially hidden)
-        const respawnButton = document.createElement('button');
-        respawnButton.id = 'respawn-button';
-        respawnButton.textContent = 'Respawn';
-        respawnButton.style.cssText = `
+        // Create respawn popup (initially hidden)
+        const respawnPopup = document.createElement('div');
+        respawnPopup.id = 'respawn-popup';
+        respawnPopup.style.cssText = `
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            padding: 15px 30px;
-            font-size: 18px;
-            background: #4CAF50;
+            background: rgba(0, 0, 0, 0.85);
             color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
+            padding: 30px 50px;
+            border-radius: 12px;
+            text-align: center;
             z-index: 1000;
             display: none;
-            font-weight: bold;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-            pointer-events: auto;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            pointer-events: none;
         `;
-        respawnButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            // Exit pointer lock if active
-            if (document.pointerLockElement) {
-                document.exitPointerLock();
-            }
-            this.respawn();
-        });
-        // Also handle mousedown to catch clicks even with pointer lock
-        respawnButton.addEventListener('mousedown', (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-        });
-        document.body.appendChild(respawnButton);
+        respawnPopup.innerHTML = `
+            <h2 style="margin: 0 0 15px 0; font-size: 32px; color: #ff4444;">You Died</h2>
+            <p style="margin: 0; font-size: 18px; color: #cccccc;">Click anywhere to respawn</p>
+        `;
+        document.body.appendChild(respawnPopup);
         
         // Update hearts when health changes
         const healthCallback = (health: number) => {
@@ -350,13 +370,16 @@ export class Game {
     
     private onPlayerDeath(): void {
         this.isDead = true;
-        const respawnButton = document.getElementById('respawn-button');
-        if (respawnButton) {
-            respawnButton.style.display = 'block';
-            // Exit pointer lock so player can click the button
-            if (document.pointerLockElement) {
-                document.exitPointerLock();
-            }
+        
+        // Exit pointer lock so player can click to respawn
+        if (document.pointerLockElement) {
+            document.exitPointerLock();
+        }
+        
+        // Show respawn popup
+        const respawnPopup = document.getElementById('respawn-popup');
+        if (respawnPopup) {
+            respawnPopup.style.display = 'block';
         }
         
         // Hide local player character mesh
@@ -369,9 +392,11 @@ export class Game {
     
     private respawn(): void {
         this.isDead = false;
-        const respawnButton = document.getElementById('respawn-button');
-        if (respawnButton) {
-            respawnButton.style.display = 'none';
+        
+        // Hide respawn popup
+        const respawnPopup = document.getElementById('respawn-popup');
+        if (respawnPopup) {
+            respawnPopup.style.display = 'none';
         }
         
         // Show local player character mesh again
@@ -402,10 +427,34 @@ export class Game {
     private setupEventListeners(): void {
         window.addEventListener('resize', () => this.onWindowResize());
         
-        // Left-click shooting
+        // Left-click shooting or respawn if dead
         this.renderer.domElement.addEventListener('mousedown', (e) => {
             if (e.button === 0) { // Left mouse button
-                this.shoot();
+                if (this.isDead) {
+                    // If player is dead, respawn on click
+                    this.respawn();
+                } else {
+                    // Otherwise, shoot
+                    this.shoot();
+                }
+            } else if (e.button === 2) { // Right mouse button
+                if (!this.isDead) {
+                    // Place block on right-click
+                    this.placeBlock();
+                }
+            }
+        });
+
+        // Prevent context menu on right-click
+        this.renderer.domElement.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+
+        // Handle key presses for block breaking
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyB' && !this.isDead) {
+                // Break block with 'B' key
+                this.breakBlock();
             }
         });
     }
@@ -442,6 +491,32 @@ export class Game {
         
         // Send bullet to server so other players can see it
         this.networkManager.sendBulletShot(spawnNode.position, direction);
+    }
+
+    private placeBlock(): void {
+        if (this.isDead) {
+            return;
+        }
+
+        const blockData = this.blockManager.placeBlockAtPreview('stone');
+        if (blockData) {
+            // Send block placement to server
+            this.networkManager.sendBlockPlaced(blockData);
+        }
+    }
+
+    private breakBlock(): void {
+        if (this.isDead) {
+            return;
+        }
+
+        // Use targeted block instead of preview (preview shows where to place, not what to break)
+        this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+        const blockData = this.blockManager.removeBlockAtTarget(this.raycaster, 10);
+        if (blockData) {
+            // Send block removal to server
+            this.networkManager.sendBlockRemoved(blockData);
+        }
     }
 
     private onWindowResize(): void {
@@ -509,6 +584,12 @@ export class Game {
         
         // Update bullets
         this.updateBullets(deltaTime);
+
+        // Update block preview
+        if (!this.isDead) {
+            this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+            this.blockManager.updatePreview(this.raycaster, this.camera, 10);
+        }
     }
     
     private updateBullets(deltaTime: number): void {
@@ -739,8 +820,14 @@ export class Game {
         this.remotePlayers.forEach(player => player.dispose());
         this.remotePlayers.clear();
         
+        // Dispose block manager
+        this.blockManager.dispose();
+        
         // Disconnect from server
         this.networkManager.disconnect();
+        
+        // Dispose leaderboard
+        this.leaderboard.dispose();
         
         this.sceneManager.dispose();
         this.renderer.dispose();

@@ -39,6 +39,13 @@ export interface BulletData {
     timestamp: number;
 }
 
+export interface BlockData {
+    x: number;
+    y: number;
+    z: number;
+    type: string;
+}
+
 export enum ConnectionStatus {
     DISCONNECTED = 'disconnected',  // Red - Not connected at all
     CONNECTING = 'connecting',        // Yellow - Trying to connect
@@ -69,6 +76,11 @@ export class NetworkManager {
     private onMonsterDiedCallback: (() => void) | null = null;
     private onMonsterRespawnedCallback: ((position: { x: number; y: number; z: number }, rotationY: number, health: number, maxHealth: number) => void) | null = null;
     private onMonsterHealthUpdateCallback: ((health: number, maxHealth: number) => void) | null = null;
+    private onBlockPlacedCallback: ((blockData: BlockData) => void) | null = null;
+    private onBlockRemovedCallback: ((blockData: BlockData) => void) | null = null;
+    private blocks: BlockData[] = [];
+    private blocksReceived: boolean = false;
+    private onBlocksReceivedCallback: ((blocks: BlockData[]) => void) | null = null;
 
     constructor(serverUrl: string = 'http://localhost:3001') {
         this.serverUrl = serverUrl;
@@ -211,6 +223,29 @@ export class NetworkManager {
         this.socket.on('monsterHealthUpdate', (data: { health: number; maxHealth: number }) => {
             if (this.onMonsterHealthUpdateCallback) {
                 this.onMonsterHealthUpdateCallback(data.health, data.maxHealth);
+            }
+        });
+
+        // Handle block placement from other players
+        this.socket.on('blockPlaced', (blockData: BlockData) => {
+            if (this.onBlockPlacedCallback) {
+                this.onBlockPlacedCallback(blockData);
+            }
+        });
+
+        // Handle block removal from other players
+        this.socket.on('blockRemoved', (blockData: BlockData) => {
+            if (this.onBlockRemovedCallback) {
+                this.onBlockRemovedCallback(blockData);
+            }
+        });
+
+        // Handle initial blocks from server
+        this.socket.on('blocks', (blocksData: BlockData[]) => {
+            this.blocks = blocksData;
+            this.blocksReceived = true;
+            if (this.onBlocksReceivedCallback) {
+                this.onBlocksReceivedCallback(blocksData);
             }
         });
     }
@@ -456,6 +491,67 @@ export class NetworkManager {
         }
 
         this.socket.emit('playerRespawned');
+    }
+
+    /**
+     * Send block placement to server
+     */
+    public sendBlockPlaced(blockData: BlockData): void {
+        if (!this.socket || !this.isConnected) {
+            return;
+        }
+
+        this.socket.emit('blockPlaced', blockData);
+    }
+
+    /**
+     * Send block removal to server
+     */
+    public sendBlockRemoved(blockData: BlockData): void {
+        if (!this.socket || !this.isConnected) {
+            return;
+        }
+
+        this.socket.emit('blockRemoved', blockData);
+    }
+
+    /**
+     * Set callback to be called when a block is placed by another player
+     */
+    public onBlockPlaced(callback: (blockData: BlockData) => void): void {
+        this.onBlockPlacedCallback = callback;
+    }
+
+    /**
+     * Set callback to be called when a block is removed by another player
+     */
+    public onBlockRemoved(callback: (blockData: BlockData) => void): void {
+        this.onBlockRemovedCallback = callback;
+    }
+
+    /**
+     * Get blocks data from server. Returns empty array if not received yet.
+     */
+    public getBlocks(): BlockData[] {
+        return this.blocks;
+    }
+
+    /**
+     * Check if blocks data has been received from server.
+     */
+    public hasBlocks(): boolean {
+        return this.blocksReceived;
+    }
+
+    /**
+     * Set callback to be called when blocks data is received from server.
+     */
+    public onBlocksReceived(callback: (blocks: BlockData[]) => void): void {
+        this.onBlocksReceivedCallback = callback;
+        // If blocks already received, call callback immediately
+        if (this.blocksReceived) {
+            callback(this.blocks);
+        }
     }
 }
 
