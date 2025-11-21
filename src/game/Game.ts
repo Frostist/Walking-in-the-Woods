@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { PlayerController } from './PlayerController';
 import { SceneManager } from './SceneManager';
 import { Character } from './Character';
-import { Player2Character } from './Player2Character';
+import { NetworkManager } from './NetworkManager';
+import { RemotePlayer } from './RemotePlayer';
 
 export class Game {
     private scene: THREE.Scene;
@@ -11,7 +12,8 @@ export class Game {
     private playerController: PlayerController;
     private sceneManager: SceneManager;
     private character: Character;
-    private player2Character: Player2Character;
+    private networkManager: NetworkManager;
+    private remotePlayers: Map<string, RemotePlayer> = new Map();
     private animationId: number = 0;
     private lastTime: number = 0;
 
@@ -43,9 +45,9 @@ export class Game {
         this.playerController = new PlayerController(this.camera, this.renderer.domElement);
         this.sceneManager = new SceneManager(this.scene);
         this.character = new Character(this.camera, this.scene);
-        // Create Player 2 character (red torso) - positioned slightly away from player 1
-        this.player2Character = new Player2Character(this.scene);
-        this.player2Character.updatePosition(new THREE.Vector3(5, 0, 5), 0);
+        
+        // Initialize network manager
+        this.networkManager = new NetworkManager();
     }
 
     public init(): void {
@@ -57,6 +59,9 @@ export class Game {
 
         // Setup scene
         this.sceneManager.setup();
+
+        // Connect to multiplayer server
+        this.networkManager.connect();
 
         // Setup event listeners
         this.setupEventListeners();
@@ -105,16 +110,58 @@ export class Game {
         // Update character position (only matters in third-person)
         this.character.updatePosition(playerPosition, rotationY);
 
-        // Update Player 2 character (for now, just keep it at a fixed position)
-        // TODO: This will be updated with multiplayer position data
-        const player2Position = new THREE.Vector3(5, 0, 5);
-        this.player2Character.updatePosition(player2Position, 0);
+        // Send local player update to server
+        this.networkManager.sendPlayerUpdate(playerPosition, rotationY);
+
+        // Update remote players
+        this.updateRemotePlayers(deltaTime);
 
         // Update scene manager
         this.sceneManager.update(deltaTime, playerPosition);
 
         // Update monster with player position
         this.sceneManager.updateMonster(deltaTime, playerPosition);
+    }
+
+    private updateRemotePlayers(deltaTime: number): void {
+        const remotePlayerData = this.networkManager.getRemotePlayers();
+        const localPlayerId = this.networkManager.getPlayerId();
+
+        // Get all remote player IDs
+        const remotePlayerIds = new Set<string>();
+        remotePlayerData.forEach((data, id) => {
+            if (id !== localPlayerId) {
+                remotePlayerIds.add(id);
+            }
+        });
+
+        // Remove players that are no longer connected
+        for (const [id, remotePlayer] of this.remotePlayers.entries()) {
+            if (!remotePlayerIds.has(id)) {
+                remotePlayer.dispose();
+                this.remotePlayers.delete(id);
+            }
+        }
+
+        // Update existing remote players or create new ones
+        remotePlayerData.forEach((data, id) => {
+            if (id === localPlayerId) {
+                return; // Skip local player
+            }
+
+            let remotePlayer = this.remotePlayers.get(id);
+            if (!remotePlayer) {
+                // Create new remote player
+                remotePlayer = new RemotePlayer(id, this.scene, data);
+                this.remotePlayers.set(id, remotePlayer);
+            } else {
+                // Update existing remote player
+                remotePlayer.update(data);
+            }
+
+            // Update interpolation
+            remotePlayer.updateInterpolation(deltaTime);
+        });
     }
 
     private render(): void {
@@ -124,7 +171,14 @@ export class Game {
     public dispose(): void {
         cancelAnimationFrame(this.animationId);
         this.character.dispose();
-        this.player2Character.dispose();
+        
+        // Dispose all remote players
+        this.remotePlayers.forEach(player => player.dispose());
+        this.remotePlayers.clear();
+        
+        // Disconnect from server
+        this.networkManager.disconnect();
+        
         this.sceneManager.dispose();
         this.renderer.dispose();
     }
