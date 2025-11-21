@@ -343,7 +343,8 @@ export class Character {
                 // setCameraMode will handle visibility via layers
             }
         } catch (error) {
-            // Silently fail - gun loading errors are not critical
+            // Log error but don't throw - gun loading errors are not critical for gameplay
+            console.warn('Failed to load gun model (non-critical):', error instanceof Error ? error.message : error);
         }
     }
     

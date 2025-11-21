@@ -21,16 +21,16 @@ export class GunLoader {
             this.loader = new GLTFLoader();
         }
 
+        // Suppress the deprecated extension warning
+        const originalWarn = console.warn;
+        console.warn = (...args: any[]) => {
+            if (args[0] && typeof args[0] === 'string' && args[0].includes('KHR_materials_pbrSpecularGlossiness')) {
+                return; // Suppress this specific warning
+            }
+            originalWarn.apply(console, args);
+        };
+        
         try {
-            // Suppress the deprecated extension warning
-            const originalWarn = console.warn;
-            console.warn = (...args: any[]) => {
-                if (args[0] && typeof args[0] === 'string' && args[0].includes('KHR_materials_pbrSpecularGlossiness')) {
-                    return; // Suppress this specific warning
-                }
-                originalWarn.apply(console, args);
-            };
-            
             // Use loadAsync - it automatically detects GLB vs GLTF format
             const gltf = await this.loader.loadAsync(path);
             
@@ -54,7 +54,12 @@ export class GunLoader {
             // Return a clone for this instance
             return this.cloneGun(gunModel);
         } catch (error) {
-            throw error;
+            // Restore original console.warn before handling error
+            console.warn = originalWarn;
+            
+            // Log the error for debugging
+            console.error(`Failed to load gun model from ${path}:`, error);
+            throw new Error(`Failed to load gun model: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 
