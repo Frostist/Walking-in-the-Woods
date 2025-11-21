@@ -44,6 +44,8 @@ if (detectMobile()) {
 } else {
     // Initialize the game on desktop
     const game = new Game();
-    game.init();
+    game.init().catch(error => {
+        console.error('Failed to initialize game:', error);
+    });
 }
 

@@ -55,7 +55,7 @@ export class Game {
         this.networkManager = new NetworkManager(serverUrl);
     }
 
-    public init(): void {
+    public async init(): Promise<void> {
         // Append canvas to container
         const container = document.getElementById('canvas-container');
         if (container) {
@@ -64,6 +64,9 @@ export class Game {
 
         // Setup scene
         this.sceneManager.setup();
+
+        // Load gun for local character
+        await this.character.loadGun();
 
         // Connect to multiplayer server
         this.networkManager.connect();

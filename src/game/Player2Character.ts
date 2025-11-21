@@ -1,8 +1,11 @@
 import * as THREE from 'three';
+import { GunLoader } from './GunLoader';
 
 export class Player2Character {
     private mesh: THREE.Group;
     private scene: THREE.Scene;
+    private gun: THREE.Group | null = null;
+    private rightHand: THREE.Mesh | null = null;
     
     constructor(scene: THREE.Scene) {
         this.scene = scene;
@@ -147,6 +150,8 @@ export class Player2Character {
         rightHand.castShadow = true;
         rightHand.receiveShadow = true;
         character.add(rightHand);
+        // Store reference to right hand for gun attachment
+        this.rightHand = rightHand;
         
         // Left thigh
         const thighGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.45, 8);
@@ -212,11 +217,37 @@ export class Player2Character {
         return character;
     }
     
+    public async loadGun(): Promise<void> {
+        try {
+            const gunModel = await GunLoader.loadGun();
+            this.gun = gunModel;
+            
+            // Scale gun if needed (adjust based on model size)
+            // Default scale - may need adjustment after seeing the model
+            this.gun.scale.set(0.01, 0.01, 0.01);
+            
+            // Attach gun to right hand
+            if (this.rightHand) {
+                this.rightHand.add(this.gun);
+                // Position gun relative to hand (same as Character class)
+                this.gun.position.set(0.05, 0, 0.05);
+                this.gun.rotation.set(Math.PI / 2, 0, Math.PI / 2);
+            }
+        } catch (error) {
+            console.error('Failed to load gun for player 2 character:', error);
+        }
+    }
+    
     public getMesh(): THREE.Group {
         return this.mesh;
     }
     
     public dispose(): void {
+        // Remove gun if attached to hand
+        if (this.gun && this.rightHand && this.rightHand.children.includes(this.gun)) {
+            this.rightHand.remove(this.gun);
+        }
+        
         if (this.scene.children.includes(this.mesh)) {
             this.scene.remove(this.mesh);
         }

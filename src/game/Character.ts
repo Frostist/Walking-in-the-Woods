@@ -1,9 +1,12 @@
 import * as THREE from 'three';
+import { GunLoader } from './GunLoader';
 
 export class Character {
     private mesh: THREE.Group;
     private camera: THREE.PerspectiveCamera;
     private scene: THREE.Scene;
+    private gun: THREE.Group | null = null;
+    private rightHand: THREE.Mesh | null = null;
     
     constructor(camera: THREE.PerspectiveCamera, scene: THREE.Scene) {
         this.camera = camera;
@@ -32,6 +35,21 @@ export class Character {
             if (head) head.visible = true;
             // Set character to layer 0 so it's visible in third-person
             this.mesh.layers.set(0);
+            // Gun is visible in third-person (attached to hand in scene)
+            if (this.gun) {
+                // Remove gun from camera if it's there
+                if (this.camera.children.includes(this.gun)) {
+                    this.camera.remove(this.gun);
+                }
+                // Attach gun back to hand if not already there
+                if (this.rightHand && !this.rightHand.children.includes(this.gun)) {
+                    this.rightHand.add(this.gun);
+                    // Reset gun position relative to hand
+                    this.gun.position.set(0.05, 0, 0.05);
+                    this.gun.rotation.set(Math.PI / 2, 0, Math.PI / 2);
+                }
+                this.gun.layers.set(0);
+            }
         } else {
             // First-person: keep in scene but hide from camera using layers
             if (this.camera.children.includes(this.mesh)) {
@@ -49,6 +67,21 @@ export class Character {
             if (head) head.visible = false;
             // Set character to layer 1 so it's hidden from camera but still casts shadows
             this.mesh.layers.set(1);
+            // For first-person, attach gun to camera so it's visible
+            if (this.gun) {
+                // Remove gun from hand if it's there
+                if (this.rightHand && this.rightHand.children.includes(this.gun)) {
+                    this.rightHand.remove(this.gun);
+                }
+                // Add gun to camera if not already there
+                if (!this.camera.children.includes(this.gun)) {
+                    this.camera.add(this.gun);
+                }
+                // Position gun relative to camera (in front and slightly down)
+                this.gun.position.set(0.3, -0.2, -0.5);
+                this.gun.rotation.set(0, 0, 0);
+                this.gun.layers.set(0); // Visible in camera view
+            }
         }
     }
     
@@ -187,6 +220,8 @@ export class Character {
         rightHand.castShadow = true;
         rightHand.receiveShadow = true;
         character.add(rightHand);
+        // Store reference to right hand for gun attachment
+        this.rightHand = rightHand;
         
         // Left thigh
         const thighGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.45, 8);
@@ -252,11 +287,46 @@ export class Character {
         return character;
     }
     
+    public async loadGun(): Promise<void> {
+        try {
+            const gunModel = await GunLoader.loadGun();
+            this.gun = gunModel;
+            
+            // Scale gun if needed (adjust based on model size)
+            // Default scale - may need adjustment after seeing the model
+            this.gun.scale.set(0.01, 0.01, 0.01);
+            
+            // Attach gun to right hand
+            if (this.rightHand) {
+                this.rightHand.add(this.gun);
+                // Position gun relative to hand (adjust as needed)
+                // Gun should point forward, so rotate and position accordingly
+                this.gun.position.set(0, 0, 0);
+                this.gun.rotation.set(0, 0, 0);
+                // Fine-tune positioning - gun grip should align with hand
+                // These values may need adjustment based on the actual model
+                this.gun.position.set(0.05, 0, 0.05);
+                this.gun.rotation.set(Math.PI / 2, 0, Math.PI / 2);
+            }
+        } catch (error) {
+            console.error('Failed to load gun for character:', error);
+        }
+    }
+    
     public getMesh(): THREE.Group {
         return this.mesh;
     }
     
     public dispose(): void {
+        // Remove gun if attached to camera
+        if (this.gun && this.camera.children.includes(this.gun)) {
+            this.camera.remove(this.gun);
+        }
+        // Remove gun if attached to hand
+        if (this.gun && this.rightHand && this.rightHand.children.includes(this.gun)) {
+            this.rightHand.remove(this.gun);
+        }
+        
         if (this.camera.children.includes(this.mesh)) {
             this.camera.remove(this.mesh);
         }
