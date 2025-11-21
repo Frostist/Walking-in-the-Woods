@@ -128,25 +128,29 @@ export class Player2Character {
         leftHand.receiveShadow = true;
         character.add(leftHand);
         
-        // Right upper arm
+        // Right upper arm - straight out in front
         const rightUpperArm = new THREE.Mesh(upperArmGeometry, armMaterial);
-        rightUpperArm.position.set(0.28, 1.075, 0);
-        rightUpperArm.rotation.z = -0.2; // Slight forward angle
+        rightUpperArm.position.set(0.28, 1.075, -0.175); // Move forward (negative Z)
+        rightUpperArm.rotation.x = Math.PI / 2; // Rotate to point forward (horizontal)
+        rightUpperArm.rotation.z = -0.1; // Slight angle to the right
         rightUpperArm.castShadow = true;
         rightUpperArm.receiveShadow = true;
         character.add(rightUpperArm);
         
-        // Right forearm
+        // Right forearm - continue straight forward
         const rightForearm = new THREE.Mesh(forearmGeometry, armMaterial);
-        rightForearm.position.set(0.28, 0.85, 0);
-        rightForearm.rotation.z = -0.2;
+        rightForearm.position.set(0.28, 1.075, -0.5); // Further forward
+        rightForearm.rotation.x = Math.PI / 2; // Rotate to point forward (horizontal)
+        rightForearm.rotation.z = -0.1; // Slight angle to the right
         rightForearm.castShadow = true;
         rightForearm.receiveShadow = true;
         character.add(rightForearm);
         
-        // Right hand
+        // Right hand - at the end of the arm, holding gun forward
         const rightHand = new THREE.Mesh(handGeometry, handMaterial);
-        rightHand.position.set(0.28, 0.7, 0);
+        rightHand.position.set(0.28, 1.075, -0.65); // At the end of the extended arm
+        rightHand.rotation.x = Math.PI / 2; // Rotate to match arm orientation
+        rightHand.rotation.z = -0.1;
         rightHand.castShadow = true;
         rightHand.receiveShadow = true;
         character.add(rightHand);
@@ -222,19 +226,30 @@ export class Player2Character {
             const gunModel = await GunLoader.loadGun();
             this.gun = gunModel;
             
-            // Scale gun if needed (adjust based on model size)
-            // Default scale - may need adjustment after seeing the model
-            this.gun.scale.set(0.01, 0.01, 0.01);
+            // Calculate scale based on bounding box (same logic as Character)
+            const bbox = new THREE.Box3();
+            bbox.setFromObject(this.gun);
+            const size = bbox.getSize(new THREE.Vector3());
+            if (size.length() > 0) {
+                const targetLength = 0.4;
+                const currentLength = Math.max(size.x, size.y, size.z);
+                const scale = targetLength / currentLength;
+                this.gun.scale.set(scale, scale, scale);
+            } else {
+                this.gun.scale.set(0.5, 0.5, 0.5);
+            }
             
             // Attach gun to right hand
             if (this.rightHand) {
                 this.rightHand.add(this.gun);
                 // Position gun relative to hand (same as Character class)
-                this.gun.position.set(0.05, 0, 0.05);
-                this.gun.rotation.set(Math.PI / 2, 0, Math.PI / 2);
+                this.gun.position.set(0, 0, -0.15); // Forward from hand
+                // Rotate gun to face forward
+                this.gun.rotation.set(-Math.PI / 2, -Math.PI / 2, 0);
+                this.gun.layers.set(0);
             }
         } catch (error) {
-            console.error('Failed to load gun for player 2 character:', error);
+            // Silently fail - gun loading errors are not critical
         }
     }
     

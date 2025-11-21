@@ -22,13 +22,26 @@ export class GunLoader {
         }
 
         try {
+            // Suppress the deprecated extension warning
+            const originalWarn = console.warn;
+            console.warn = (...args: any[]) => {
+                if (args[0] && typeof args[0] === 'string' && args[0].includes('KHR_materials_pbrSpecularGlossiness')) {
+                    return; // Suppress this specific warning
+                }
+                originalWarn.apply(console, args);
+            };
+            
+            // Use loadAsync - it automatically detects GLB vs GLTF format
             const gltf = await this.loader.loadAsync(path);
+            
+            // Restore original console.warn
+            console.warn = originalWarn;
             
             // Get the gun model from the loaded scene
             const gunModel = gltf.scene;
             
             // Enable shadows
-            gunModel.traverse((child) => {
+            gunModel.traverse((child: THREE.Object3D) => {
                 if (child instanceof THREE.Mesh) {
                     child.castShadow = true;
                     child.receiveShadow = true;
@@ -41,7 +54,6 @@ export class GunLoader {
             // Return a clone for this instance
             return this.cloneGun(gunModel);
         } catch (error) {
-            console.error('Failed to load gun model:', error);
             throw error;
         }
     }

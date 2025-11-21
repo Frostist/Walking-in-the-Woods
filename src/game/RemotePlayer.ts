@@ -23,8 +23,8 @@ export class RemotePlayer {
         this.character.updatePosition(this.currentPosition, this.currentRotationY);
         
         // Load gun for remote player
-        this.character.loadGun().catch(error => {
-            console.error(`Failed to load gun for remote player ${id}:`, error);
+        this.character.loadGun().catch(() => {
+            // Silently fail - gun loading errors are not critical
         });
     }
 

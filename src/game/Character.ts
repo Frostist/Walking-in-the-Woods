@@ -45,8 +45,8 @@ export class Character {
                 if (this.rightHand && !this.rightHand.children.includes(this.gun)) {
                     this.rightHand.add(this.gun);
                     // Reset gun position relative to hand
-                    this.gun.position.set(0.05, 0, 0.05);
-                    this.gun.rotation.set(Math.PI / 2, 0, Math.PI / 2);
+                    this.gun.position.set(0, 0, -0.15);
+                    this.gun.rotation.set(-Math.PI / 2, -Math.PI / 2, 0);
                 }
                 this.gun.layers.set(0);
             }
@@ -67,20 +67,30 @@ export class Character {
             if (head) head.visible = false;
             // Set character to layer 1 so it's hidden from camera but still casts shadows
             this.mesh.layers.set(1);
-            // For first-person, attach gun to camera so it's visible
+            // For first-person, keep gun attached to hand (same as third-person)
             if (this.gun) {
-                // Remove gun from hand if it's there
-                if (this.rightHand && this.rightHand.children.includes(this.gun)) {
-                    this.rightHand.remove(this.gun);
+                // Remove gun from camera if it's there
+                if (this.camera.children.includes(this.gun)) {
+                    this.camera.remove(this.gun);
                 }
-                // Add gun to camera if not already there
-                if (!this.camera.children.includes(this.gun)) {
-                    this.camera.add(this.gun);
+                // Ensure gun is attached to hand
+                if (this.rightHand && !this.rightHand.children.includes(this.gun)) {
+                    this.rightHand.add(this.gun);
+                    // Reset gun position relative to hand
+                    this.gun.position.set(0, 0, -0.15);
+                    this.gun.rotation.set(-Math.PI / 2, -Math.PI / 2, 0);
                 }
-                // Position gun relative to camera (in front and slightly down)
-                this.gun.position.set(0.3, -0.2, -0.5);
-                this.gun.rotation.set(0, 0, 0);
-                this.gun.layers.set(0); // Visible in camera view
+                // Make gun visible even though character is on layer 1
+                // Set gun to layer 0 so it's visible in first-person
+                this.gun.layers.set(0);
+                this.gun.visible = true;
+                this.gun.traverse((child: THREE.Object3D) => {
+                    child.visible = true;
+                    if (child instanceof THREE.Mesh) {
+                        child.visible = true;
+                        child.layers.set(0);
+                    }
+                });
             }
         }
     }
@@ -198,25 +208,29 @@ export class Character {
         leftHand.receiveShadow = true;
         character.add(leftHand);
         
-        // Right upper arm
+        // Right upper arm - straight out in front
         const rightUpperArm = new THREE.Mesh(upperArmGeometry, armMaterial);
-        rightUpperArm.position.set(0.28, 1.075, 0);
-        rightUpperArm.rotation.z = -0.2; // Slight forward angle
+        rightUpperArm.position.set(0.28, 1.075, -0.175); // Move forward (negative Z)
+        rightUpperArm.rotation.x = Math.PI / 2; // Rotate to point forward (horizontal)
+        rightUpperArm.rotation.z = -0.1; // Slight angle to the right
         rightUpperArm.castShadow = true;
         rightUpperArm.receiveShadow = true;
         character.add(rightUpperArm);
         
-        // Right forearm
+        // Right forearm - continue straight forward
         const rightForearm = new THREE.Mesh(forearmGeometry, armMaterial);
-        rightForearm.position.set(0.28, 0.85, 0);
-        rightForearm.rotation.z = -0.2;
+        rightForearm.position.set(0.28, 1.075, -0.5); // Further forward
+        rightForearm.rotation.x = Math.PI / 2; // Rotate to point forward (horizontal)
+        rightForearm.rotation.z = -0.1; // Slight angle to the right
         rightForearm.castShadow = true;
         rightForearm.receiveShadow = true;
         character.add(rightForearm);
         
-        // Right hand
+        // Right hand - at the end of the arm, holding gun forward
         const rightHand = new THREE.Mesh(handGeometry, handMaterial);
-        rightHand.position.set(0.28, 0.7, 0);
+        rightHand.position.set(0.28, 1.075, -0.65); // At the end of the extended arm
+        rightHand.rotation.x = Math.PI / 2; // Rotate to match arm orientation
+        rightHand.rotation.z = -0.1;
         rightHand.castShadow = true;
         rightHand.receiveShadow = true;
         character.add(rightHand);
@@ -292,25 +306,52 @@ export class Character {
             const gunModel = await GunLoader.loadGun();
             this.gun = gunModel;
             
-            // Scale gun if needed (adjust based on model size)
-            // Default scale - may need adjustment after seeing the model
-            this.gun.scale.set(0.01, 0.01, 0.01);
+            const bbox = this.getGunBoundingBox();
+            if (bbox) {
+                const size = bbox.getSize(new THREE.Vector3());
+                // Calculate scale based on bounding box - aim for roughly 0.3-0.5 units long
+                const targetLength = 0.4;
+                const currentLength = Math.max(size.x, size.y, size.z);
+                const scale = targetLength / currentLength;
+                this.gun.scale.set(scale, scale, scale);
+            } else {
+                // Fallback scale if bounding box calculation fails
+                this.gun.scale.set(0.5, 0.5, 0.5);
+            }
             
             // Attach gun to right hand
             if (this.rightHand) {
                 this.rightHand.add(this.gun);
-                // Position gun relative to hand (adjust as needed)
-                // Gun should point forward, so rotate and position accordingly
-                this.gun.position.set(0, 0, 0);
-                this.gun.rotation.set(0, 0, 0);
-                // Fine-tune positioning - gun grip should align with hand
-                // These values may need adjustment based on the actual model
-                this.gun.position.set(0.05, 0, 0.05);
-                this.gun.rotation.set(Math.PI / 2, 0, Math.PI / 2);
+                
+                // Position gun relative to hand
+                this.gun.position.set(0, 0, -0.15);
+                this.gun.rotation.set(-Math.PI / 2, -Math.PI / 2, 0);
+                
+                // Make gun visible by ensuring it's on the correct layer
+                this.gun.layers.set(0);
+                this.gun.visible = true;
+                // Ensure all children are visible
+                this.gun.traverse((child: THREE.Object3D) => {
+                    child.visible = true;
+                    if (child instanceof THREE.Mesh) {
+                        child.visible = true;
+                        child.layers.set(0);
+                    }
+                });
+                
+                // Gun stays attached to hand in both first-person and third-person modes
+                // setCameraMode will handle visibility via layers
             }
         } catch (error) {
-            console.error('Failed to load gun for character:', error);
+            // Silently fail - gun loading errors are not critical
         }
+    }
+    
+    private getGunBoundingBox(): THREE.Box3 | null {
+        if (!this.gun) return null;
+        const box = new THREE.Box3();
+        box.setFromObject(this.gun);
+        return box;
     }
     
     public getMesh(): THREE.Group {
