@@ -10,6 +10,8 @@ export class RemotePlayer {
     private currentPosition: THREE.Vector3;
     private currentRotationY: number;
     private interpolationSpeed: number = 0.2; // How fast to interpolate (0-1)
+    private health: number = 5; // 5 hearts
+    private maxHealth: number = 5;
 
     constructor(id: string, scene: THREE.Scene, initialData: RemotePlayerData) {
         this.id = id;
@@ -59,6 +61,27 @@ export class RemotePlayer {
 
     public getCharacter(): Player2Character {
         return this.character;
+    }
+    
+    public getHealth(): number {
+        return this.health;
+    }
+    
+    public getMaxHealth(): number {
+        return this.maxHealth;
+    }
+    
+    public takeDamage(amount: number = 1): void {
+        this.health = Math.max(0, this.health - amount);
+        this.character.takeDamage(amount);
+    }
+    
+    public getBoundingBox(): THREE.Box3 {
+        return this.character.getBoundingBox();
+    }
+    
+    public getPosition(): THREE.Vector3 {
+        return this.currentPosition.clone();
     }
 
     public dispose(): void {

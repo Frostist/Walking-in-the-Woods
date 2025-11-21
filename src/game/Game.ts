@@ -22,6 +22,7 @@ export class Game {
     private statusUpdateInterval: number = 500; // Update status every 500ms
     private lastShotTime: number = 0;
     private shotCooldown: number = 100; // Milliseconds between shots
+    private isDead: boolean = false;
 
     constructor() {
         // Create scene
@@ -92,9 +93,117 @@ export class Game {
 
         // Initialize connection status UI
         this.updateConnectionStatus();
+        
+        // Setup health UI
+        this.setupHealthUI();
 
         // Start game loop
         this.gameLoop(0);
+    }
+    
+    private setupHealthUI(): void {
+        // Create hearts container
+        const heartsContainer = document.createElement('div');
+        heartsContainer.id = 'hearts-container';
+        heartsContainer.style.cssText = `
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            gap: 5px;
+            z-index: 100;
+        `;
+        document.body.appendChild(heartsContainer);
+        
+        // Create respawn button (initially hidden)
+        const respawnButton = document.createElement('button');
+        respawnButton.id = 'respawn-button';
+        respawnButton.textContent = 'Respawn';
+        respawnButton.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 15px 30px;
+            font-size: 18px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            z-index: 1000;
+            display: none;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        `;
+        respawnButton.addEventListener('click', () => {
+            this.respawn();
+        });
+        document.body.appendChild(respawnButton);
+        
+        // Update hearts when health changes
+        this.character.setOnHealthChanged((health) => {
+            this.updateHeartsUI(health);
+            if (health <= 0 && !this.isDead) {
+                this.onPlayerDeath();
+            }
+        });
+        
+        // Initial hearts display
+        this.updateHeartsUI(this.character.getHealth());
+    }
+    
+    private updateHeartsUI(health: number): void {
+        const heartsContainer = document.getElementById('hearts-container');
+        if (!heartsContainer) return;
+        
+        const maxHealth = this.character.getMaxHealth();
+        heartsContainer.innerHTML = '';
+        
+        for (let i = 0; i < maxHealth; i++) {
+            const heart = document.createElement('div');
+            heart.style.cssText = `
+                width: 30px;
+                height: 30px;
+                font-size: 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: ${i < health ? '#ff0000' : '#666666'};
+            `;
+            heart.textContent = '❤️';
+            heartsContainer.appendChild(heart);
+        }
+    }
+    
+    private onPlayerDeath(): void {
+        this.isDead = true;
+        const respawnButton = document.getElementById('respawn-button');
+        if (respawnButton) {
+            respawnButton.style.display = 'block';
+        }
+        
+        // Disable player controls
+        // The player controller will still work but we can add visual feedback
+    }
+    
+    private respawn(): void {
+        this.isDead = false;
+        const respawnButton = document.getElementById('respawn-button');
+        if (respawnButton) {
+            respawnButton.style.display = 'none';
+        }
+        
+        // Reset health to max
+        const maxHealth = this.character.getMaxHealth();
+        // We need to reset health - let's add a method for that
+        this.character.setHealth(maxHealth);
+        
+        // Reset player position to spawn (0, 0, 0)
+        this.playerController.setPosition(0, 1.6, 0);
+        
+        // Update hearts UI
+        this.updateHeartsUI(maxHealth);
     }
 
     private setupEventListeners(): void {
@@ -109,6 +218,11 @@ export class Game {
     }
     
     private shoot(): void {
+        // Can't shoot if dead
+        if (this.isDead) {
+            return;
+        }
+        
         const now = performance.now();
         if (now - this.lastShotTime < this.shotCooldown) {
             return; // Cooldown not expired
@@ -127,8 +241,11 @@ export class Game {
         this.camera.getWorldDirection(direction);
         direction.normalize();
         
+        // Get local player ID for bullet ownership
+        const localPlayerId = this.networkManager.getPlayerId();
+        
         // Create bullet at spawn node position, shooting in camera direction
-        const bullet = new Bullet(this.scene, spawnNode.position, direction);
+        const bullet = new Bullet(this.scene, spawnNode.position, direction, localPlayerId);
         this.bullets.push(bullet);
     }
 
@@ -156,20 +273,25 @@ export class Game {
     }
 
     private update(deltaTime: number): void {
-        // Update player controller (handles movement and camera)
-        this.playerController.update(deltaTime);
+        // Don't update player controller if dead
+        if (!this.isDead) {
+            // Update player controller (handles movement and camera)
+            this.playerController.update(deltaTime);
+        }
 
-        // Update character based on camera mode
-        const playerPosition = this.playerController.getPosition();
-        const rotationY = this.playerController.getRotationY();
-        const isThirdPerson = this.playerController.isThirdPersonMode();
-        this.character.setCameraMode(isThirdPerson, playerPosition, rotationY);
-        
-        // Update character position (only matters in third-person)
-        this.character.updatePosition(playerPosition, rotationY);
+        // Update character based on camera mode (only if not dead)
+        if (!this.isDead) {
+            const playerPosition = this.playerController.getPosition();
+            const rotationY = this.playerController.getRotationY();
+            const isThirdPerson = this.playerController.isThirdPersonMode();
+            this.character.setCameraMode(isThirdPerson, playerPosition, rotationY);
+            
+            // Update character position (only matters in third-person)
+            this.character.updatePosition(playerPosition, rotationY);
 
-        // Send local player update to server
-        this.networkManager.sendPlayerUpdate(playerPosition, rotationY);
+            // Send local player update to server
+            this.networkManager.sendPlayerUpdate(playerPosition, rotationY);
+        }
 
         // Update remote players
         this.updateRemotePlayers(deltaTime);
@@ -184,11 +306,14 @@ export class Game {
         // Get server-synchronized game time
         const serverGameTime = this.networkManager.getServerGameTime();
 
+        // Get current player position for scene updates
+        const currentPlayerPosition = this.isDead ? new THREE.Vector3(0, 1.6, 0) : this.playerController.getPosition();
+
         // Update scene manager with server time (falls back to local time if server time unavailable)
-        this.sceneManager.update(deltaTime, playerPosition, serverGameTime);
+        this.sceneManager.update(deltaTime, currentPlayerPosition, serverGameTime);
 
         // Update monster with player position
-        this.sceneManager.updateMonster(deltaTime, playerPosition);
+        this.sceneManager.updateMonster(deltaTime, currentPlayerPosition);
         
         // Update bullets
         this.updateBullets(deltaTime);
@@ -197,14 +322,64 @@ export class Game {
     private updateBullets(deltaTime: number): void {
         // Get all trees for collision detection
         const trees = this.sceneManager.getTrees();
+        const localPlayerId = this.networkManager.getPlayerId();
         
-        // Update all bullets and remove dead ones
+        // Update all bullets and check collisions
         this.bullets = this.bullets.filter(bullet => {
             const isAlive = bullet.update(deltaTime, trees);
             if (!isAlive) {
                 bullet.dispose();
+                return false;
             }
-            return isAlive;
+            
+            // Check collision with local player (if bullet wasn't shot by local player)
+            if (bullet.getShooterId() !== localPlayerId) {
+                const characterMesh = this.character.getMesh();
+                const characterWorldPos = new THREE.Vector3();
+                characterMesh.getWorldPosition(characterWorldPos);
+                
+                const bulletPos = bullet.getPosition();
+                const distanceToPlayer = bulletPos.distanceTo(characterWorldPos);
+                
+                // Check if bullet is close to player character (within character bounds)
+                // Character is roughly 0.8 units wide and 1.8 units tall
+                if (distanceToPlayer < 0.6) {
+                    // Additional check: make sure bullet is at reasonable height (not too high/low)
+                    const heightDiff = Math.abs(bulletPos.y - characterWorldPos.y);
+                    if (heightDiff < 2.0) {
+                        this.character.takeDamage(1);
+                        bullet.dispose();
+                        return false;
+                    }
+                }
+            }
+            
+            // Check collision with remote players
+            for (const [id, remotePlayer] of this.remotePlayers.entries()) {
+                if (bullet.getShooterId() === id) {
+                    continue; // Can't hit yourself
+                }
+                
+                const remotePlayerMesh = remotePlayer.getCharacter().getMesh();
+                const remotePlayerWorldPos = new THREE.Vector3();
+                remotePlayerMesh.getWorldPosition(remotePlayerWorldPos);
+                
+                const bulletPos = bullet.getPosition();
+                const distance = bulletPos.distanceTo(remotePlayerWorldPos);
+                
+                // Check if bullet is close to remote player character
+                if (distance < 0.6) {
+                    // Additional check: make sure bullet is at reasonable height
+                    const heightDiff = Math.abs(bulletPos.y - remotePlayerWorldPos.y);
+                    if (heightDiff < 2.0) {
+                        remotePlayer.takeDamage(1);
+                        bullet.dispose();
+                        return false;
+                    }
+                }
+            }
+            
+            return true;
         });
     }
 

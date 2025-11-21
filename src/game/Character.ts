@@ -9,6 +9,9 @@ export class Character {
     private gun: THREE.Group | null = null;
     private rightHand: THREE.Mesh | null = null;
     private characterData: CharacterExportData | null = null;
+    private health: number = 5; // 5 hearts
+    private maxHealth: number = 5;
+    private onHealthChanged: ((health: number) => void) | null = null;
     
     constructor(camera: THREE.PerspectiveCamera, scene: THREE.Scene) {
         this.camera = camera;
@@ -655,6 +658,42 @@ export class Character {
     
     public getMesh(): THREE.Group {
         return this.mesh;
+    }
+    
+    public getHealth(): number {
+        return this.health;
+    }
+    
+    public getMaxHealth(): number {
+        return this.maxHealth;
+    }
+    
+    public takeDamage(amount: number = 1): void {
+        this.health = Math.max(0, this.health - amount);
+        if (this.onHealthChanged) {
+            this.onHealthChanged(this.health);
+        }
+    }
+    
+    public setHealth(health: number): void {
+        this.health = Math.min(this.maxHealth, Math.max(0, health));
+        if (this.onHealthChanged) {
+            this.onHealthChanged(this.health);
+        }
+    }
+    
+    public setOnHealthChanged(callback: (health: number) => void): void {
+        this.onHealthChanged = callback;
+    }
+    
+    public isDead(): boolean {
+        return this.health <= 0;
+    }
+    
+    public getBoundingBox(): THREE.Box3 {
+        const box = new THREE.Box3();
+        box.setFromObject(this.mesh);
+        return box;
     }
     
     public dispose(): void {

@@ -8,6 +8,8 @@ export class Player2Character {
     private gun: THREE.Group | null = null;
     private rightHand: THREE.Mesh | null = null;
     private characterData: CharacterExportData | null = null;
+    private health: number = 5; // 5 hearts
+    private maxHealth: number = 5;
     
     constructor(scene: THREE.Scene) {
         this.scene = scene;
@@ -394,6 +396,24 @@ export class Player2Character {
     
     public getMesh(): THREE.Group {
         return this.mesh;
+    }
+    
+    public getHealth(): number {
+        return this.health;
+    }
+    
+    public getMaxHealth(): number {
+        return this.maxHealth;
+    }
+    
+    public takeDamage(amount: number = 1): void {
+        this.health = Math.max(0, this.health - amount);
+    }
+    
+    public getBoundingBox(): THREE.Box3 {
+        const box = new THREE.Box3();
+        box.setFromObject(this.mesh);
+        return box;
     }
     
     public dispose(): void {

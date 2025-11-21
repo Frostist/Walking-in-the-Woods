@@ -9,11 +9,13 @@ export class Bullet {
     private scene: THREE.Scene;
     private isDisposed: boolean = false;
     private previousPosition: THREE.Vector3;
+    private shooterId: string | null = null; // ID of player who shot this bullet
 
     constructor(
         scene: THREE.Scene,
         position: THREE.Vector3,
-        direction: THREE.Vector3
+        direction: THREE.Vector3,
+        shooterId: string | null = null
     ) {
         this.scene = scene;
         
@@ -27,6 +29,7 @@ export class Bullet {
         this.mesh = new THREE.Mesh(geometry, material);
         this.mesh.position.copy(position);
         this.previousPosition = position.clone();
+        this.shooterId = shooterId;
         
         // Set velocity based on direction
         this.velocity = direction.normalize().multiplyScalar(this.speed);
@@ -116,6 +119,14 @@ export class Bullet {
 
     public getPosition(): THREE.Vector3 {
         return this.mesh.position.clone();
+    }
+    
+    public getShooterId(): string | null {
+        return this.shooterId;
+    }
+    
+    public getPreviousPosition(): THREE.Vector3 {
+        return this.previousPosition.clone();
     }
 }
 
