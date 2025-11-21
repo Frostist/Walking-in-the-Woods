@@ -46,8 +46,9 @@ export class Game {
         this.sceneManager = new SceneManager(this.scene);
         this.character = new Character(this.camera, this.scene);
         
-        // Initialize network manager
-        this.networkManager = new NetworkManager();
+        // Initialize network manager - use environment variable or default to localhost
+        const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+        this.networkManager = new NetworkManager(serverUrl);
     }
 
     public init(): void {
