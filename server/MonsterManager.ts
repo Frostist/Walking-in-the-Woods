@@ -5,6 +5,9 @@ export interface PlayerState {
     id: string;
     position: { x: number; y: number; z: number };
     rotationY: number;
+    health: number;
+    maxHealth: number;
+    isDead: boolean;
 }
 
 // Monster state
@@ -82,6 +85,12 @@ export class MonsterManager {
         const playerArray = Array.from(this.players.values());
         for (let i = 0; i < playerArray.length; i++) {
             const player = playerArray[i];
+            
+            // Skip dead players
+            if (player.isDead || player.health <= 0) {
+                continue;
+            }
+            
             const dx = player.position.x - this.monster.position.x;
             const dz = player.position.z - this.monster.position.z;
             const distance = Math.sqrt(dx * dx + dz * dz);
@@ -93,6 +102,33 @@ export class MonsterManager {
         }
         
         return nearestPlayer;
+    }
+    
+    /**
+     * Update player health when they take damage
+     */
+    public updatePlayerHealth(playerId: string, damage: number): void {
+        const player = this.players.get(playerId);
+        if (player) {
+            player.health = Math.max(0, player.health - damage);
+            if (player.health <= 0) {
+                player.isDead = true;
+                player.health = 0;
+                // Clean up attack cooldown for dead player
+                this.monsterAttackCooldowns.delete(playerId);
+            }
+        }
+    }
+    
+    /**
+     * Reset player health when they respawn
+     */
+    public respawnPlayer(playerId: string): void {
+        const player = this.players.get(playerId);
+        if (player) {
+            player.health = player.maxHealth;
+            player.isDead = false;
+        }
     }
 
     private updateMonster(deltaTime: number): void {
@@ -121,6 +157,9 @@ export class MonsterManager {
             if (now - lastAttackTime >= MONSTER_ATTACK_COOLDOWN) {
                 // Attack the player
                 this.monsterAttackCooldowns.set(nearestPlayer.id, now);
+                
+                // Update player health on server
+                this.updatePlayerHealth(nearestPlayer.id, MONSTER_DAMAGE);
                 
                 // Broadcast damage to all clients
                 this.io.emit('playerDamaged', {

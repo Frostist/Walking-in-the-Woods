@@ -266,9 +266,21 @@ export class Game {
             display: none;
             font-weight: bold;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            pointer-events: auto;
         `;
-        respawnButton.addEventListener('click', () => {
+        respawnButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            // Exit pointer lock if active
+            if (document.pointerLockElement) {
+                document.exitPointerLock();
+            }
             this.respawn();
+        });
+        // Also handle mousedown to catch clicks even with pointer lock
+        respawnButton.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
         });
         document.body.appendChild(respawnButton);
         
@@ -341,7 +353,15 @@ export class Game {
         const respawnButton = document.getElementById('respawn-button');
         if (respawnButton) {
             respawnButton.style.display = 'block';
+            // Exit pointer lock so player can click the button
+            if (document.pointerLockElement) {
+                document.exitPointerLock();
+            }
         }
+        
+        // Hide local player character mesh
+        const characterMesh = this.character.getMesh();
+        characterMesh.visible = false;
         
         // Disable player controls
         // The player controller will still work but we can add visual feedback
@@ -354,16 +374,29 @@ export class Game {
             respawnButton.style.display = 'none';
         }
         
+        // Show local player character mesh again
+        const characterMesh = this.character.getMesh();
+        characterMesh.visible = true;
+        
         // Reset health to max
         const maxHealth = this.character.getMaxHealth();
-        // We need to reset health - let's add a method for that
+        // Reset health - this will trigger the health callback which updates the UI
         this.character.setHealth(maxHealth);
+        
+        // Ensure hearts container is visible
+        const heartsContainer = document.getElementById('hearts-container');
+        if (heartsContainer) {
+            heartsContainer.style.display = 'flex';
+        }
+        
+        // Explicitly update hearts UI to ensure it's restored
+        this.updateHeartsUI(maxHealth);
         
         // Reset player position to spawn (0, 0, 0)
         this.playerController.setPosition(0, 1.6, 0);
         
-        // Update hearts UI
-        this.updateHeartsUI(maxHealth);
+        // Notify server that player has respawned
+        this.networkManager.sendPlayerRespawned();
     }
 
     private setupEventListeners(): void {
@@ -656,9 +689,9 @@ export class Game {
             }
         });
 
-        // Remove players that are no longer connected
+        // Remove players that are no longer connected or are dead
         for (const [id, remotePlayer] of this.remotePlayers.entries()) {
-            if (!remotePlayerIds.has(id)) {
+            if (!remotePlayerIds.has(id) || remotePlayer.isDead()) {
                 remotePlayer.dispose();
                 this.remotePlayers.delete(id);
             }

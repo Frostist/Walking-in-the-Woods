@@ -81,6 +81,10 @@ export class RemotePlayer {
         this.updateHealthBarDisplay();
     }
     
+    public isDead(): boolean {
+        return this.health <= 0;
+    }
+    
     private createHealthBar(): void {
         // Create health bar container
         const healthBar = document.createElement('div');

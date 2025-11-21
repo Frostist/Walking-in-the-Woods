@@ -127,7 +127,10 @@ io.on('connection', (socket) => {
     const playerState: PlayerState = {
         id: socket.id,
         position: { x: 0, y: 0, z: 0 },
-        rotationY: 0
+        rotationY: 0,
+        health: 5, // 5 hearts
+        maxHealth: 5,
+        isDead: false
     };
     players.set(socket.id, playerState);
     
@@ -191,11 +194,19 @@ io.on('connection', (socket) => {
 
     // Handle player damage events
     socket.on('playerDamaged', (data: { targetPlayerId: string; damage: number }) => {
+        // Update player health on server
+        monsterManager.updatePlayerHealth(data.targetPlayerId, data.damage);
+        
         // Broadcast damage event to all players (including the damaged player for synchronization)
         io.emit('playerDamaged', {
             playerId: data.targetPlayerId,
             damage: data.damage
         });
+    });
+    
+    // Handle player respawn
+    socket.on('playerRespawned', () => {
+        monsterManager.respawnPlayer(socket.id);
     });
 
     // Handle monster damage events

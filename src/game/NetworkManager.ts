@@ -446,5 +446,16 @@ export class NetworkManager {
             damage: damage
         });
     }
+
+    /**
+     * Notify server that player has respawned
+     */
+    public sendPlayerRespawned(): void {
+        if (!this.socket || !this.isConnected) {
+            return;
+        }
+
+        this.socket.emit('playerRespawned');
+    }
 }
 
