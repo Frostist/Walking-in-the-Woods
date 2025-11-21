@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { PlayerController } from './PlayerController';
 import { SceneManager } from './SceneManager';
 import { Character } from './Character';
-import { NetworkManager } from './NetworkManager';
+import { NetworkManager, ConnectionStatus } from './NetworkManager';
 import { RemotePlayer } from './RemotePlayer';
 
 export class Game {
@@ -16,6 +16,8 @@ export class Game {
     private remotePlayers: Map<string, RemotePlayer> = new Map();
     private animationId: number = 0;
     private lastTime: number = 0;
+    private lastStatusUpdate: number = 0;
+    private statusUpdateInterval: number = 500; // Update status every 500ms
 
     constructor() {
         // Create scene
@@ -67,6 +69,9 @@ export class Game {
         // Setup event listeners
         this.setupEventListeners();
 
+        // Initialize connection status UI
+        this.updateConnectionStatus();
+
         // Start game loop
         this.gameLoop(0);
     }
@@ -117,11 +122,47 @@ export class Game {
         // Update remote players
         this.updateRemotePlayers(deltaTime);
 
+        // Update connection status UI (check every 500ms)
+        const now = performance.now();
+        if (now - this.lastStatusUpdate > this.statusUpdateInterval) {
+            this.updateConnectionStatus();
+            this.lastStatusUpdate = now;
+        }
+
         // Update scene manager
         this.sceneManager.update(deltaTime, playerPosition);
 
         // Update monster with player position
         this.sceneManager.updateMonster(deltaTime, playerPosition);
+    }
+
+    private updateConnectionStatus(): void {
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        
+        if (!statusDot || !statusText) return;
+
+        const status = this.networkManager.getConnectionStatus();
+        
+        switch (status) {
+            case ConnectionStatus.CONNECTED:
+                statusDot.style.backgroundColor = '#00ff00'; // Green
+                statusText.textContent = 'Connected';
+                break;
+            case ConnectionStatus.CONNECTING:
+                statusDot.style.backgroundColor = '#ffff00'; // Yellow
+                statusText.textContent = 'Connecting...';
+                break;
+            case ConnectionStatus.RECONNECTING:
+                statusDot.style.backgroundColor = '#ffff00'; // Yellow
+                statusText.textContent = 'Reconnecting...';
+                break;
+            case ConnectionStatus.DISCONNECTED:
+            default:
+                statusDot.style.backgroundColor = '#ff0000'; // Red
+                statusText.textContent = 'Disconnected';
+                break;
+        }
     }
 
     private updateRemotePlayers(deltaTime: number): void {

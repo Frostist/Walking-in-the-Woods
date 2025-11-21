@@ -1,4 +1,72 @@
-# Deployment Guide for Self-Hosted Server
+# Deployment Guide
+
+This guide covers deployment options for both Railway (cloud platform) and self-hosted servers.
+
+## Railway Deployment (Recommended)
+
+Railway is a cloud platform that makes deployment simple. The server is already configured to work with Railway.
+
+### Server Deployment on Railway
+
+1. **Create a new Railway project** and connect your GitHub repository (or deploy from CLI)
+
+2. **Add a new service** and select the `server/` directory as the root path
+
+3. **Configure Build Settings**:
+   - Build Command: `npm install && npm run build`
+   - Start Command: `npm start`
+   - Root Directory: `server/`
+
+4. **Environment Variables** (Railway sets these automatically):
+   - `PORT` - Railway automatically provides this (defaults to 3001 if not set)
+   - `NODE_ENV` - Set to `production` (optional, Railway may set this automatically)
+
+5. **Deploy**: Railway will automatically:
+   - Install dependencies (`npm install`)
+   - Build the TypeScript server (`npm run build`)
+   - Start the server (`npm start`)
+
+6. **Get your server URL**: Railway will provide a URL like `https://your-app.up.railway.app`
+
+7. **Visit the status page**: Navigate to your Railway server URL in a browser to see:
+   - Server online status
+   - Number of connected players
+
+### Client Deployment on Railway
+
+1. **Add another service** for the client, selecting the root directory (not `server/`)
+
+2. **Configure Build Settings**:
+   - Build Command: `npm install && npm run build`
+   - Start Command: Use a static file server (see below)
+   - Root Directory: `/` (root of project)
+
+3. **Set Environment Variable**:
+   - `VITE_SERVER_URL` - Set this to your Railway server URL (e.g., `https://your-server.up.railway.app`)
+
+4. **Static File Serving**: Railway can serve static files, but you may need to:
+   - Install `serve` package: Add `"serve": "^14.2.0"` to `devDependencies` in `package.json`
+   - Update start command: `npx serve -s dist -l $PORT`
+   - Or use Railway's static site feature if available
+
+### Alternative: Deploy Client Separately
+
+You can also deploy the client to:
+- **Vercel**: Connect your repo, set root directory, build command `npm run build`, output directory `dist`
+- **Netlify**: Similar setup, specify `dist` as publish directory
+- **GitHub Pages**: Build locally and push `dist/` folder
+
+Make sure to set `VITE_SERVER_URL` environment variable to your Railway server URL before building.
+
+### Testing Your Railway Deployment
+
+1. **Server Status**: Visit your Railway server URL - you should see the status page showing "Online" and player count
+2. **Client Connection**: Open your deployed client and check the browser console for connection status
+3. **Multiplayer**: Open multiple browser windows/tabs to test multiplayer functionality
+
+---
+
+## Self-Hosted Server Deployment
 
 This guide will help you set up the game server and client on a Linux server in `/var/www`.
 

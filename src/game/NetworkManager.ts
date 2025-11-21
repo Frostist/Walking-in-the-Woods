@@ -14,13 +14,22 @@ export interface RemotePlayerData {
     lastUpdateTime: number;
 }
 
+export enum ConnectionStatus {
+    DISCONNECTED = 'disconnected',  // Red - Not connected at all
+    CONNECTING = 'connecting',        // Yellow - Trying to connect
+    CONNECTED = 'connected',         // Green - Successfully connected
+    RECONNECTING = 'reconnecting'    // Yellow - Lost connection, trying to reconnect
+}
+
 export class NetworkManager {
     private socket: Socket | null = null;
     private isConnected: boolean = false;
+    private connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED;
     private remotePlayers: Map<string, RemotePlayerData> = new Map();
     private updateInterval: number = 33; // ~30fps (33ms)
     private lastUpdateTime: number = 0;
     private serverUrl: string;
+    private connectionAttempts: number = 0;
 
     constructor(serverUrl: string = 'http://localhost:3001') {
         this.serverUrl = serverUrl;
@@ -32,16 +41,54 @@ export class NetworkManager {
             return;
         }
 
-        this.socket = io(this.serverUrl);
+        this.connectionStatus = ConnectionStatus.CONNECTING;
+        this.connectionAttempts++;
+        this.socket = io(this.serverUrl, {
+            reconnection: true,
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 20000
+        });
 
         this.socket.on('connect', () => {
             console.log('Connected to server');
             this.isConnected = true;
+            this.connectionStatus = ConnectionStatus.CONNECTED;
+            this.connectionAttempts = 0;
         });
 
-        this.socket.on('disconnect', () => {
-            console.log('Disconnected from server');
+        this.socket.on('disconnect', (reason: string) => {
+            console.log('Disconnected from server:', reason);
             this.isConnected = false;
+            if (reason === 'io server disconnect') {
+                // Server disconnected us, don't try to reconnect
+                this.connectionStatus = ConnectionStatus.DISCONNECTED;
+            } else {
+                // Network error, will try to reconnect
+                this.connectionStatus = ConnectionStatus.RECONNECTING;
+            }
+        });
+
+        this.socket.on('connect_error', (error: Error) => {
+            console.error('Connection error:', error);
+            this.connectionStatus = ConnectionStatus.RECONNECTING;
+        });
+
+        this.socket.on('reconnect_attempt', () => {
+            console.log('Attempting to reconnect...');
+            this.connectionStatus = ConnectionStatus.RECONNECTING;
+        });
+
+        this.socket.on('reconnect', () => {
+            console.log('Reconnected to server');
+            this.isConnected = true;
+            this.connectionStatus = ConnectionStatus.CONNECTED;
+        });
+
+        this.socket.on('reconnect_failed', () => {
+            console.error('Failed to reconnect');
+            this.connectionStatus = ConnectionStatus.DISCONNECTED;
         });
 
         // Receive initial list of players
@@ -75,6 +122,7 @@ export class NetworkManager {
             this.socket.disconnect();
             this.socket = null;
             this.isConnected = false;
+            this.connectionStatus = ConnectionStatus.DISCONNECTED;
             this.remotePlayers.clear();
         }
     }
@@ -130,6 +178,10 @@ export class NetworkManager {
 
     public isConnectedToServer(): boolean {
         return this.isConnected;
+    }
+
+    public getConnectionStatus(): ConnectionStatus {
+        return this.connectionStatus;
     }
 
     public getPlayerId(): string | null {
