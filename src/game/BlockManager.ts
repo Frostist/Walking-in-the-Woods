@@ -15,6 +15,8 @@ export class BlockManager {
     private previewBlock: THREE.Mesh | null = null;
     private canPlace: boolean = false;
     private previewPosition: THREE.Vector3 = new THREE.Vector3();
+    private currentBlockType: string = 'stone';
+    private availableBlockTypes: string[] = ['stone', 'dirt', 'grass', 'wood', 'sand'];
 
     constructor(scene: THREE.Scene) {
         this.scene = scene;
@@ -201,9 +203,14 @@ export class BlockManager {
                 }
             }
         } else if (groundDistance !== null && groundDistance <= maxDistance) {
-            // Place block on ground
+            // Place block on ground - allow stacking from ground level
             const blockX = Math.round(groundIntersect.x / this.blockSize) * this.blockSize;
-            const blockY = Math.max(0.5, Math.round(groundIntersect.y / this.blockSize) * this.blockSize);
+            // Round to nearest block position, but ensure it's at least 0.5 (half block above ground plane)
+            let blockY = Math.round(groundIntersect.y / this.blockSize) * this.blockSize;
+            // If below 0.5, place at 0.5 (first block level above ground)
+            if (blockY < 0.5) {
+                blockY = 0.5;
+            }
             const blockZ = Math.round(groundIntersect.z / this.blockSize) * this.blockSize;
             
             targetPosition = new THREE.Vector3(blockX, blockY, blockZ);
@@ -244,21 +251,58 @@ export class BlockManager {
     /**
      * Place block at preview position
      */
-    public placeBlockAtPreview(type: string = 'stone'): BlockData | null {
+    public placeBlockAtPreview(type?: string): BlockData | null {
         if (!this.canPlace || !this.previewBlock || !this.previewBlock.visible) {
             return null;
         }
 
+        // Use provided type or current selected type
+        const blockType = type || this.currentBlockType;
         const pos = this.previewPosition;
-        if (this.placeBlock(pos.x, pos.y, pos.z, type)) {
+        if (this.placeBlock(pos.x, pos.y, pos.z, blockType)) {
             return {
                 x: pos.x,
                 y: pos.y,
                 z: pos.z,
-                type: type
+                type: blockType
             };
         }
         return null;
+    }
+
+    /**
+     * Set the current block type
+     */
+    public setBlockType(type: string): boolean {
+        if (this.availableBlockTypes.includes(type)) {
+            this.currentBlockType = type;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Get the current block type
+     */
+    public getBlockType(): string {
+        return this.currentBlockType;
+    }
+
+    /**
+     * Get all available block types
+     */
+    public getAvailableBlockTypes(): string[] {
+        return [...this.availableBlockTypes];
+    }
+
+    /**
+     * Cycle to next block type
+     */
+    public cycleBlockType(): string {
+        const currentIndex = this.availableBlockTypes.indexOf(this.currentBlockType);
+        const nextIndex = (currentIndex + 1) % this.availableBlockTypes.length;
+        this.currentBlockType = this.availableBlockTypes[nextIndex];
+        return this.currentBlockType;
     }
 
     /**

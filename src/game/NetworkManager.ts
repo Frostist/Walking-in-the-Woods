@@ -77,6 +77,10 @@ export class NetworkManager {
     private onMonsterDiedCallback: (() => void) | null = null;
     private onMonsterRespawnedCallback: ((position: { x: number; y: number; z: number }, rotationY: number, health: number, maxHealth: number) => void) | null = null;
     private onMonsterHealthUpdateCallback: ((health: number, maxHealth: number) => void) | null = null;
+    private onNightMonstersSpawnedCallback: ((monsters: Array<{ id: string; position: { x: number; y: number; z: number }; rotationY: number; health: number; maxHealth: number }>) => void) | null = null;
+    private onNightMonstersUpdateCallback: ((monsters: Array<{ id: string; position: { x: number; y: number; z: number }; rotationY: number; health: number; maxHealth: number }>) => void) | null = null;
+    private onNightMonstersDiedCallback: ((monsterIds: string[]) => void) | null = null;
+    private onNightMonsterDiedCallback: ((monsterId: string) => void) | null = null;
     private onBlockPlacedCallback: ((blockData: BlockData) => void) | null = null;
     private onBlockRemovedCallback: ((blockData: BlockData) => void) | null = null;
     private blocks: BlockData[] = [];
@@ -273,6 +277,34 @@ export class NetworkManager {
         this.socket.on('monsterHealthUpdate', (data: { health: number; maxHealth: number }) => {
             if (this.onMonsterHealthUpdateCallback) {
                 this.onMonsterHealthUpdateCallback(data.health, data.maxHealth);
+            }
+        });
+
+        // Handle night monsters spawned
+        this.socket.on('nightMonstersSpawned', (monsters: Array<{ id: string; position: { x: number; y: number; z: number }; rotationY: number; health: number; maxHealth: number }>) => {
+            if (this.onNightMonstersSpawnedCallback) {
+                this.onNightMonstersSpawnedCallback(monsters);
+            }
+        });
+
+        // Handle night monsters update
+        this.socket.on('nightMonstersUpdate', (monsters: Array<{ id: string; position: { x: number; y: number; z: number }; rotationY: number; health: number; maxHealth: number }>) => {
+            if (this.onNightMonstersUpdateCallback) {
+                this.onNightMonstersUpdateCallback(monsters);
+            }
+        });
+
+        // Handle night monsters died (all at once - when day comes)
+        this.socket.on('nightMonstersDied', (monsterIds: string[]) => {
+            if (this.onNightMonstersDiedCallback) {
+                this.onNightMonstersDiedCallback(monsterIds);
+            }
+        });
+
+        // Handle single night monster died
+        this.socket.on('nightMonsterDied', (monsterId: string) => {
+            if (this.onNightMonsterDiedCallback) {
+                this.onNightMonsterDiedCallback(monsterId);
             }
         });
 
@@ -527,6 +559,34 @@ export class NetworkManager {
     }
 
     /**
+     * Set callback to be called when night monsters spawn
+     */
+    public onNightMonstersSpawned(callback: (monsters: Array<{ id: string; position: { x: number; y: number; z: number }; rotationY: number; health: number; maxHealth: number }>) => void): void {
+        this.onNightMonstersSpawnedCallback = callback;
+    }
+
+    /**
+     * Set callback to be called when night monsters update
+     */
+    public onNightMonstersUpdate(callback: (monsters: Array<{ id: string; position: { x: number; y: number; z: number }; rotationY: number; health: number; maxHealth: number }>) => void): void {
+        this.onNightMonstersUpdateCallback = callback;
+    }
+
+    /**
+     * Set callback to be called when night monsters die (all at once)
+     */
+    public onNightMonstersDied(callback: (monsterIds: string[]) => void): void {
+        this.onNightMonstersDiedCallback = callback;
+    }
+
+    /**
+     * Set callback to be called when a single night monster dies
+     */
+    public onNightMonsterDied(callback: (monsterId: string) => void): void {
+        this.onNightMonsterDiedCallback = callback;
+    }
+
+    /**
      * Send monster damage event to server
      */
     public sendMonsterDamaged(damage: number): void {
@@ -535,6 +595,20 @@ export class NetworkManager {
         }
 
         this.socket.emit('monsterDamaged', {
+            damage: damage
+        });
+    }
+
+    /**
+     * Send night monster damage event to server
+     */
+    public sendNightMonsterDamaged(monsterId: string, damage: number): void {
+        if (!this.socket || !this.isConnected) {
+            return;
+        }
+
+        this.socket.emit('nightMonsterDamaged', {
+            monsterId: monsterId,
             damage: damage
         });
     }

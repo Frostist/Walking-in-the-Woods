@@ -8,6 +8,7 @@ import { Bullet } from './Bullet';
 import { BlockManager } from './BlockManager';
 import { Leaderboard } from './Leaderboard';
 import { UpdateNotifier } from './UpdateNotifier';
+import { NightMonster } from './NightMonster';
 
 export class Game {
     private scene: THREE.Scene;
@@ -20,6 +21,7 @@ export class Game {
     private remotePlayers: Map<string, RemotePlayer> = new Map();
     private bullets: Bullet[] = [];
     private blockManager: BlockManager;
+    private nightMonsters: Map<string, NightMonster> = new Map();
     private raycaster: THREE.Raycaster;
     private leaderboard: Leaderboard;
     private updateNotifier: UpdateNotifier;
@@ -196,6 +198,49 @@ export class Game {
         // Setup callback for monster respawn
         this.networkManager.onMonsterRespawned((position, rotationY, health, maxHealth) => {
             this.sceneManager.handleMonsterRespawn(position, rotationY, health, maxHealth);
+        });
+
+        // Setup callbacks for night monsters
+        this.networkManager.onNightMonstersSpawned((monsters) => {
+            for (const monsterData of monsters) {
+                const position = new THREE.Vector3(monsterData.position.x, monsterData.position.y, monsterData.position.z);
+                const nightMonster = new NightMonster(this.scene, position, monsterData.id);
+                this.nightMonsters.set(monsterData.id, nightMonster);
+            }
+        });
+
+        this.networkManager.onNightMonstersUpdate((monsters) => {
+            for (const monsterData of monsters) {
+                const nightMonster = this.nightMonsters.get(monsterData.id);
+                if (nightMonster) {
+                    nightMonster.updateFromServer(
+                        monsterData.position,
+                        monsterData.rotationY,
+                        monsterData.health,
+                        monsterData.maxHealth
+                    );
+                }
+            }
+        });
+
+        this.networkManager.onNightMonstersDied((monsterIds) => {
+            for (const monsterId of monsterIds) {
+                const nightMonster = this.nightMonsters.get(monsterId);
+                if (nightMonster) {
+                    nightMonster.die();
+                    nightMonster.dispose();
+                    this.nightMonsters.delete(monsterId);
+                }
+            }
+        });
+
+        this.networkManager.onNightMonsterDied((monsterId) => {
+            const nightMonster = this.nightMonsters.get(monsterId);
+            if (nightMonster) {
+                nightMonster.die();
+                nightMonster.dispose();
+                this.nightMonsters.delete(monsterId);
+            }
         });
 
         // Setup callback for monster health updates
@@ -545,6 +590,54 @@ export class Game {
             heartsContainer.appendChild(heart);
         }
     }
+
+    private showBlockTypeNotification(blockTypeName: string): void {
+        // Remove existing notification if any
+        const existing = document.getElementById('block-type-notification');
+        if (existing) {
+            existing.remove();
+        }
+
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.id = 'block-type-notification';
+        notification.textContent = `Block Type: ${blockTypeName}`;
+        notification.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.75);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            z-index: 150;
+            pointer-events: none;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        `;
+        document.body.appendChild(notification);
+
+        // Fade in
+        requestAnimationFrame(() => {
+            notification.style.opacity = '1';
+        });
+
+        // Remove after 2 seconds
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 300);
+        }, 2000);
+    }
     
     private onPlayerDeath(): void {
         this.isDead = true;
@@ -628,11 +721,35 @@ export class Game {
             e.preventDefault();
         });
 
-        // Handle key presses for block breaking
+        // Handle key presses for block breaking and block type selection
         document.addEventListener('keydown', (e) => {
-            if (e.code === 'KeyB' && !this.isDead) {
+            if (this.isDead) {
+                return;
+            }
+            
+            if (e.code === 'KeyB') {
                 // Break block with 'B' key
                 this.breakBlock();
+            } else if (e.code === 'Digit1' || e.code === 'Numpad1') {
+                // Select stone block
+                this.blockManager.setBlockType('stone');
+                this.showBlockTypeNotification('Stone');
+            } else if (e.code === 'Digit2' || e.code === 'Numpad2') {
+                // Select dirt block
+                this.blockManager.setBlockType('dirt');
+                this.showBlockTypeNotification('Dirt');
+            } else if (e.code === 'Digit3' || e.code === 'Numpad3') {
+                // Select grass block
+                this.blockManager.setBlockType('grass');
+                this.showBlockTypeNotification('Grass');
+            } else if (e.code === 'Digit4' || e.code === 'Numpad4') {
+                // Select wood block
+                this.blockManager.setBlockType('wood');
+                this.showBlockTypeNotification('Wood');
+            } else if (e.code === 'Digit5' || e.code === 'Numpad5') {
+                // Select sand block
+                this.blockManager.setBlockType('sand');
+                this.showBlockTypeNotification('Sand');
             }
         });
     }
@@ -676,7 +793,8 @@ export class Game {
             return;
         }
 
-        const blockData = this.blockManager.placeBlockAtPreview('stone');
+        // Use the currently selected block type
+        const blockData = this.blockManager.placeBlockAtPreview();
         if (blockData) {
             // Send block placement to server
             this.networkManager.sendBlockPlaced(blockData);
@@ -815,6 +933,19 @@ export class Game {
                     this.networkManager.sendMonsterDamaged(1);
                     bullet.dispose();
                     return false;
+                }
+                
+                // Check collision with night monsters (only if we shot the bullet)
+                for (const [monsterId, nightMonster] of this.nightMonsters.entries()) {
+                    if (nightMonster.getIsAlive()) {
+                        const nightMonsterMesh = nightMonster.getMesh();
+                        if (this.checkBulletMonsterCollision(bullet, nightMonsterMesh)) {
+                            // Local bullet hit night monster - notify server
+                            this.networkManager.sendNightMonsterDamaged(monsterId, 1);
+                            bullet.dispose();
+                            return false;
+                        }
+                    }
                 }
             }
             

@@ -4,6 +4,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { generateTrees, generateGrass } from './TreeGenerator.js';
 import { MonsterManager } from './MonsterManager.js';
+import { NightMonsterManager } from './NightMonsterManager.js';
 import { DatabaseManager } from './DatabaseManager.js';
 const app = express();
 const httpServer = createServer(app);
@@ -100,6 +101,11 @@ app.get('/', (req, res) => {
 const players = new Map();
 // Track last damager for each player (for kill attribution)
 const lastDamager = new Map(); // playerId -> attackerId
+const socketToPlayerId = new Map(); // socket.id -> stored player ID
+// Helper function to get effective player ID (stored ID or socket.id)
+const getEffectivePlayerId = (socketId) => {
+    return socketToPlayerId.get(socketId) || socketId;
+};
 // Initialize database manager
 const dbManager = new DatabaseManager();
 const blocks = new Map();
@@ -109,6 +115,8 @@ function getBlockKey(x, y, z) {
 }
 // Initialize monster manager (pass blocks for collision detection)
 const monsterManager = new MonsterManager(io, players, blocks);
+// Initialize night monster manager
+const nightMonsterManager = new NightMonsterManager(io, players);
 // Generate trees once on server startup - all clients will see the same trees
 const TREE_COUNT = 80;
 const TREE_SPREAD = 60;
@@ -137,7 +145,8 @@ io.on('connection', (socket) => {
         rotationY: 0,
         health: 5, // 5 hearts
         maxHealth: 5,
-        isDead: false
+        isDead: false,
+        name: 'Player' // Default name
     };
     players.set(socket.id, playerState);
     // Send current game time to newly connected player
@@ -172,6 +181,84 @@ io.on('connection', (socket) => {
     else {
         socket.emit('monsterDied');
     }
+    // Handle player name
+    socket.on('playerName', async (data) => {
+        const player = players.get(socket.id);
+        if (player) {
+            try {
+                // Handle both old format (string) and new format (object)
+                let playerName;
+                let storedPlayerId = null;
+                if (typeof data === 'string') {
+                    // Old format - just a string
+                    playerName = data;
+                }
+                else {
+                    // New format - object with name and storedPlayerId
+                    playerName = data.name;
+                    storedPlayerId = data.storedPlayerId || null;
+                }
+                // Sanitize name
+                const sanitizedName = (playerName || 'Player').substring(0, 20).replace(/[<>]/g, '') || 'Player';
+                // Track if we need to migrate kills (if socket.id differs from effective player_id)
+                const currentSocketId = socket.id;
+                let effectivePlayerId = currentSocketId;
+                // If we have a stored player ID, use it for database operations
+                if (storedPlayerId) {
+                    socketToPlayerId.set(socket.id, storedPlayerId);
+                    effectivePlayerId = storedPlayerId;
+                    console.log(`Player ${socket.id} reusing stored player ID: ${storedPlayerId}`);
+                }
+                else if (sanitizedName && sanitizedName !== 'Player') {
+                    // If no stored player ID but we have a username, try to find existing player_id by username
+                    const existingPlayerId = await dbManager.getPlayerIdByName(sanitizedName);
+                    if (existingPlayerId) {
+                        socketToPlayerId.set(socket.id, existingPlayerId);
+                        effectivePlayerId = existingPlayerId;
+                        console.log(`Player ${socket.id} found existing player ID ${existingPlayerId} for username: ${sanitizedName}`);
+                        // Migrate any kills from the current socket.id to the effective player_id
+                        // This ensures all kills for this username are consolidated
+                        if (currentSocketId !== existingPlayerId) {
+                            await dbManager.migrateKills(currentSocketId, existingPlayerId);
+                        }
+                        // Also migrate kills from any other player_ids that have this same name
+                        // This handles edge cases where there might be multiple player_ids with the same name
+                        await dbManager.migrateKillsByPlayerName(sanitizedName, existingPlayerId);
+                    }
+                }
+                // Register name in database using effective player ID (will handle uniqueness)
+                // This will update the player_id if it changed, or create a new entry
+                const registeredName = await dbManager.registerPlayerName(effectivePlayerId, sanitizedName);
+                player.name = registeredName;
+                // Update last_seen timestamp
+                await dbManager.updatePlayerLastSeen(effectivePlayerId);
+                console.log(`Player ${socket.id} (effective ID: ${effectivePlayerId}) set name to: ${registeredName}${registeredName !== sanitizedName ? ` (original: ${sanitizedName} was taken)` : ''}`);
+                // Send the effective player ID and registered name back to the client so it can update its cookies
+                socket.emit('playerIdConfirmed', {
+                    playerId: effectivePlayerId,
+                    playerName: registeredName
+                });
+                // Broadcast updated player info to all clients
+                io.emit('playerUpdate', {
+                    id: socket.id,
+                    position: player.position,
+                    rotationY: player.rotationY,
+                    name: player.name
+                });
+            }
+            catch (error) {
+                console.error(`Error registering player name for ${socket.id}:`, error);
+                // Fallback to default name
+                player.name = 'Player';
+                io.emit('playerUpdate', {
+                    id: socket.id,
+                    position: player.position,
+                    rotationY: player.rotationY,
+                    name: player.name
+                });
+            }
+        }
+    });
     // Notify other players about new player
     socket.broadcast.emit('playerJoined', playerState);
     // Handle player position updates
@@ -184,7 +271,8 @@ io.on('connection', (socket) => {
             socket.broadcast.emit('playerUpdate', {
                 id: socket.id,
                 position: data.position,
-                rotationY: data.rotationY
+                rotationY: data.rotationY,
+                name: player.name
             });
         }
     });
@@ -195,29 +283,31 @@ io.on('connection', (socket) => {
     });
     // Handle player damage events
     socket.on('playerDamaged', (data) => {
+        const attackerEffectiveId = getEffectivePlayerId(socket.id);
+        const targetEffectiveId = getEffectivePlayerId(data.targetPlayerId);
         // Track who dealt the damage (for kill attribution)
         if (data.targetPlayerId !== socket.id) {
             // Only track if it's not self-damage
-            lastDamager.set(data.targetPlayerId, socket.id);
+            lastDamager.set(targetEffectiveId, attackerEffectiveId);
         }
-        // Update player health on server
+        // Update player health on server (use socket.id for game state, effective ID for database)
         const wasAlive = !monsterManager.isPlayerDead(data.targetPlayerId);
         monsterManager.updatePlayerHealth(data.targetPlayerId, data.damage);
         const isNowDead = monsterManager.isPlayerDead(data.targetPlayerId);
         // If player just died, record the kill
         if (wasAlive && isNowDead) {
-            const killerId = lastDamager.get(data.targetPlayerId);
-            if (killerId && killerId !== data.targetPlayerId) {
-                // Record player kill
-                dbManager.recordKill(killerId, 'player', data.targetPlayerId);
+            const killerId = lastDamager.get(targetEffectiveId);
+            if (killerId && killerId !== targetEffectiveId) {
+                // Record player kill using effective IDs
+                dbManager.recordKill(killerId, 'player', targetEffectiveId);
                 // Notify all clients about the kill
                 io.emit('playerKilled', {
                     killerId: killerId,
-                    victimId: data.targetPlayerId
+                    victimId: data.targetPlayerId // Use socket.id for client communication
                 });
             }
             // Clear the last damager for this player
-            lastDamager.delete(data.targetPlayerId);
+            lastDamager.delete(targetEffectiveId);
         }
         // Broadcast damage event to all players (including the damaged player for synchronization)
         io.emit('playerDamaged', {
@@ -231,14 +321,28 @@ io.on('connection', (socket) => {
     });
     // Handle monster damage events
     socket.on('monsterDamaged', (data) => {
+        const effectivePlayerId = getEffectivePlayerId(socket.id);
         const wasAlive = monsterManager.isMonsterAlive();
         const killed = monsterManager.damageMonster(data.damage, socket.id);
         // If monster just died, record the kill
         if (wasAlive && killed) {
-            // Record monster kill
-            dbManager.recordKill(socket.id, 'monster');
+            // Record monster kill using effective player ID
+            dbManager.recordKill(effectivePlayerId, 'monster');
             // Notify all clients about the kill
             io.emit('monsterKilled', {
+                killerId: socket.id
+            });
+        }
+    });
+    // Handle night monster damage events
+    socket.on('nightMonsterDamaged', (data) => {
+        const effectivePlayerId = getEffectivePlayerId(socket.id);
+        const killed = nightMonsterManager.damageMonster(data.monsterId, data.damage);
+        // If night monster was killed, record the kill (as 'monster' type)
+        if (killed) {
+            dbManager.recordKill(effectivePlayerId, 'monster');
+            io.emit('nightMonsterKilled', {
+                monsterId: data.monsterId,
                 killerId: socket.id
             });
         }
@@ -278,6 +382,8 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log(`Player disconnected: ${socket.id}`);
         players.delete(socket.id);
+        // Clean up socket to player ID mapping
+        socketToPlayerId.delete(socket.id);
         // Clean up attack cooldown for this player
         monsterManager.cleanupPlayerCooldown(socket.id);
         // Notify other players
@@ -296,6 +402,23 @@ app.get('/api/leaderboard', async (req, res) => {
     catch (error) {
         console.error('Error fetching leaderboard:', error);
         res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    }
+});
+// Clear database endpoint (requires secret key for safety)
+app.post('/api/clear-db', async (req, res) => {
+    try {
+        // Check for secret key in query or body
+        const secretKey = req.query.key || req.body.key;
+        const expectedKey = process.env.DB_CLEAR_SECRET || 'clear-db-secret-key-change-in-production';
+        if (secretKey !== expectedKey) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        await dbManager.clearDatabase();
+        res.json({ success: true, message: 'Database cleared successfully' });
+    }
+    catch (error) {
+        console.error('Error clearing database:', error);
+        res.status(500).json({ error: 'Failed to clear database' });
     }
 });
 // Player stats API endpoint

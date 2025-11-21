@@ -4,6 +4,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { generateTrees, TreeData, generateGrass, GrassData } from './TreeGenerator.js';
 import { MonsterManager, PlayerState } from './MonsterManager.js';
+import { NightMonsterManager } from './NightMonsterManager.js';
 import { DatabaseManager } from './DatabaseManager.js';
 
 const app = express();
@@ -131,6 +132,9 @@ function getBlockKey(x: number, y: number, z: number): string {
 
 // Initialize monster manager (pass blocks for collision detection)
 const monsterManager = new MonsterManager(io, players, blocks);
+
+// Initialize night monster manager
+const nightMonsterManager = new NightMonsterManager(io, players);
 
 // Generate trees once on server startup - all clients will see the same trees
 const TREE_COUNT = 80;
@@ -377,6 +381,21 @@ io.on('connection', (socket) => {
             dbManager.recordKill(effectivePlayerId, 'monster');
             // Notify all clients about the kill
             io.emit('monsterKilled', {
+                killerId: socket.id
+            });
+        }
+    });
+
+    // Handle night monster damage events
+    socket.on('nightMonsterDamaged', (data: { monsterId: string; damage: number }) => {
+        const effectivePlayerId = getEffectivePlayerId(socket.id);
+        const killed = nightMonsterManager.damageMonster(data.monsterId, data.damage);
+        
+        // If night monster was killed, record the kill (as 'monster' type)
+        if (killed) {
+            dbManager.recordKill(effectivePlayerId, 'monster');
+            io.emit('nightMonsterKilled', {
+                monsterId: data.monsterId,
                 killerId: socket.id
             });
         }
