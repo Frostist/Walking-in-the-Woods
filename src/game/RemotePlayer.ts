@@ -138,7 +138,12 @@ export class RemotePlayer {
         }
     }
     
-    public updateHealthBarPosition(camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer): void {
+    public updateHealthBarPosition(
+        camera: THREE.PerspectiveCamera, 
+        renderer: THREE.WebGLRenderer,
+        trees: THREE.Group[] = [],
+        blocks: THREE.Mesh[] = []
+    ): void {
         if (!this.healthBarElement) return;
         
         // Character mesh is positioned at ground level (y=0), head is at y=1.6 relative to mesh
@@ -158,13 +163,64 @@ export class RemotePlayer {
         const y = (projectedPosition.y * -0.5 + 0.5) * renderer.domElement.clientHeight;
         
         // Only show health bar if player is in front of camera and within reasonable distance
-        if (projectedPosition.z < 1 && projectedPosition.z > 0) {
+        if (projectedPosition.z >= 1 || projectedPosition.z <= 0) {
+            // Hide if behind camera or too far
+            this.healthBarElement.style.display = 'none';
+            return;
+        }
+        
+        // Check line of sight from camera to player head
+        const cameraPosition = camera.position.clone();
+        const direction = headPosition.clone().sub(cameraPosition).normalize();
+        const distance = cameraPosition.distanceTo(headPosition);
+        
+        const raycaster = new THREE.Raycaster();
+        raycaster.set(cameraPosition, direction);
+        
+        let isBlocked = false;
+        
+        // Check for intersections with trees
+        for (const tree of trees) {
+            if (isBlocked) break;
+            
+            tree.traverse((child) => {
+                if (isBlocked) return;
+                
+                if (child instanceof THREE.Mesh) {
+                    const intersects = raycaster.intersectObject(child, false);
+                    if (intersects.length > 0) {
+                        const intersection = intersects[0];
+                        // If intersection is closer than the player, line of sight is blocked
+                        if (intersection.distance < distance - 0.1) { // Small buffer to avoid floating point issues
+                            isBlocked = true;
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Check for intersections with blocks
+        if (!isBlocked) {
+            for (const block of blocks) {
+                const intersects = raycaster.intersectObject(block, false);
+                if (intersects.length > 0) {
+                    const intersection = intersects[0];
+                    // If intersection is closer than the player, line of sight is blocked
+                    if (intersection.distance < distance - 0.1) { // Small buffer to avoid floating point issues
+                        isBlocked = true;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Show or hide health bar based on line of sight
+        if (isBlocked) {
+            this.healthBarElement.style.display = 'none';
+        } else {
             this.healthBarElement.style.display = 'flex';
             this.healthBarElement.style.left = `${x}px`;
             this.healthBarElement.style.top = `${y}px`;
-        } else {
-            // Hide if behind camera or too far
-            this.healthBarElement.style.display = 'none';
         }
     }
     

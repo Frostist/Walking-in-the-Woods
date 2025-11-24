@@ -1111,9 +1111,13 @@ export class Game {
     }
 
     private render(): void {
+        // Get trees and blocks for line of sight checking
+        const trees = this.sceneManager.getTrees();
+        const blocks = this.blockManager.getAllBlockMeshes();
+        
         // Update health bar positions for all remote players
         for (const remotePlayer of this.remotePlayers.values()) {
-            remotePlayer.updateHealthBarPosition(this.camera, this.renderer);
+            remotePlayer.updateHealthBarPosition(this.camera, this.renderer, trees, blocks);
         }
         
         this.renderer.render(this.scene, this.camera);
