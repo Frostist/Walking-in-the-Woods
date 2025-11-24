@@ -891,11 +891,13 @@ export class Game {
     private updateBullets(deltaTime: number): void {
         // Get all trees for collision detection
         const trees = this.sceneManager.getTrees();
+        // Get all blocks for collision detection
+        const blocks = this.blockManager.getAllBlockMeshes();
         const localPlayerId = this.networkManager.getPlayerId();
         
         // Update all bullets and check collisions
         this.bullets = this.bullets.filter(bullet => {
-            const isAlive = bullet.update(deltaTime, trees);
+            const isAlive = bullet.update(deltaTime, trees, blocks);
             if (!isAlive) {
                 bullet.dispose();
                 return false;

@@ -42,7 +42,7 @@ export class Bullet {
         this.mesh.receiveShadow = false;
     }
 
-    public update(deltaTime: number, trees: THREE.Group[] = []): boolean {
+    public update(deltaTime: number, trees: THREE.Group[] = [], blocks: THREE.Mesh[] = []): boolean {
         if (this.isDisposed) return false;
         
         // Update age
@@ -87,6 +87,27 @@ export class Bullet {
                     }
                 });
                 if (this.isDisposed) return false;
+            }
+        }
+        
+        // Check collision with blocks using raycasting
+        if (blocks.length > 0) {
+            const raycaster = new THREE.Raycaster();
+            const direction = newPosition.clone().sub(this.previousPosition).normalize();
+            const distance = this.previousPosition.distanceTo(newPosition);
+            
+            raycaster.set(this.previousPosition, direction);
+            
+            // Check intersection with all block meshes
+            const intersects = raycaster.intersectObjects(blocks, false);
+            if (intersects.length > 0) {
+                const intersection = intersects[0];
+                // Check if intersection is within the movement distance
+                if (intersection.distance <= distance) {
+                    // Bullet hit a block - stop it
+                    this.dispose();
+                    return false;
+                }
             }
         }
         

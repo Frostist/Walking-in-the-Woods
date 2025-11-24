@@ -444,6 +444,13 @@ export class BlockManager {
     }
 
     /**
+     * Get all block meshes for collision detection
+     */
+    public getAllBlockMeshes(): THREE.Mesh[] {
+        return Array.from(this.blocks.values());
+    }
+
+    /**
      * Dispose of all resources
      */
     public dispose(): void {

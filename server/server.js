@@ -118,7 +118,7 @@ const monsterManager = new MonsterManager(io, players, blocks);
 // Initialize night monster manager
 const nightMonsterManager = new NightMonsterManager(io, players);
 // Generate trees once on server startup - all clients will see the same trees
-const TREE_COUNT = 200; // Increased tree count
+const TREE_COUNT = 600; // Increased tree count
 const TERRAIN_SIZE = 200; // Match terrain size for full map coverage
 const TREE_SEED = 12345; // Fixed seed for deterministic generation
 const trees = generateTrees(TREE_COUNT, TERRAIN_SIZE, TREE_SEED);
