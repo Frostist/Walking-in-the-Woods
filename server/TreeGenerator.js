@@ -10,15 +10,14 @@ class SeededRandom {
         return this.seed / 233280;
     }
 }
-export function generateTrees(count = 80, areaSize = 60, seed = 12345) {
+export function generateTrees(count = 200, terrainSize = 200, seed = 12345) {
     const rng = new SeededRandom(seed);
     const trees = [];
     for (let i = 0; i < count; i++) {
-        // Random position within area (using seeded random)
-        const angle = rng.next() * Math.PI * 2;
-        const distance = rng.next() * (areaSize / 2);
-        const x = Math.cos(angle) * distance;
-        const z = Math.sin(angle) * distance;
+        // Random position across the whole terrain (using seeded random)
+        // Spread across 80% of terrain size to avoid edges, similar to grass
+        const x = (rng.next() - 0.5) * terrainSize * 0.8;
+        const z = (rng.next() - 0.5) * terrainSize * 0.8;
         // Random rotation
         const rotationY = rng.next() * Math.PI * 2;
         // Random scale variation

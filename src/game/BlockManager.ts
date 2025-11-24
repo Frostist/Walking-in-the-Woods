@@ -195,23 +195,59 @@ export class BlockManager {
                 const blockY = Math.round(adjacentPos.y / this.blockSize) * this.blockSize;
                 const blockZ = Math.round(adjacentPos.z / this.blockSize) * this.blockSize;
                 
-                targetPosition = new THREE.Vector3(blockX, blockY, blockZ);
+                const adjacentTargetPos = new THREE.Vector3(blockX, blockY, blockZ);
                 
-                // Check if position is valid (not overlapping with existing block)
-                if (!this.hasBlock(targetPosition.x, targetPosition.y, targetPosition.z)) {
+                // Also check if we can place on top of the hit block
+                const topPos = new THREE.Vector3(
+                    hitBlockPos.x,
+                    hitBlockPos.y + this.blockSize,
+                    hitBlockPos.z
+                );
+                
+                // Check camera direction to prefer top placement when looking down
+                const cameraDirection = raycaster.ray.direction.clone().normalize();
+                const isLookingDown = cameraDirection.y < -0.3; // Looking down at an angle
+                
+                // Prioritize placement: if looking down, prefer top; otherwise prefer adjacent
+                if (isLookingDown && !this.hasBlock(topPos.x, topPos.y, topPos.z)) {
+                    // Place on top of the block
+                    targetPosition = topPos;
                     this.canPlace = true;
+                } else if (!this.hasBlock(adjacentTargetPos.x, adjacentTargetPos.y, adjacentTargetPos.z)) {
+                    // Place adjacent to the hit face
+                    targetPosition = adjacentTargetPos;
+                    this.canPlace = true;
+                } else if (!this.hasBlock(topPos.x, topPos.y, topPos.z)) {
+                    // Adjacent position is blocked, try placing on top instead
+                    targetPosition = topPos;
+                    this.canPlace = true;
+                } else {
+                    // Both positions are blocked
+                    targetPosition = adjacentTargetPos;
+                    this.canPlace = false;
                 }
             }
         } else if (groundDistance !== null && groundDistance <= maxDistance) {
-            // Place block on ground - allow stacking from ground level
+            // Place block on ground - blocks are centered, so y=0.5 means bottom at y=0
             const blockX = Math.round(groundIntersect.x / this.blockSize) * this.blockSize;
-            // Round to nearest block position, but ensure it's at least 0.5 (half block above ground plane)
-            let blockY = Math.round(groundIntersect.y / this.blockSize) * this.blockSize;
-            // If below 0.5, place at 0.5 (first block level above ground)
-            if (blockY < 0.5) {
-                blockY = 0.5;
-            }
             const blockZ = Math.round(groundIntersect.z / this.blockSize) * this.blockSize;
+            
+            // Check if there's already a block at ground level (y=0.5)
+            let blockY = 0.5; // Ground level (block center at 0.5, bottom at 0)
+            
+            // If there's already a block at ground level, place on top of it
+            if (this.hasBlock(blockX, blockY, blockZ)) {
+                // Find the highest block at this x,z position
+                let highestY = blockY;
+                for (let y = blockY; y < 100; y += this.blockSize) {
+                    if (this.hasBlock(blockX, y, blockZ)) {
+                        highestY = y;
+                    } else {
+                        break;
+                    }
+                }
+                blockY = highestY + this.blockSize;
+            }
             
             targetPosition = new THREE.Vector3(blockX, blockY, blockZ);
             

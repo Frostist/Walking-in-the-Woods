@@ -137,14 +137,13 @@ const monsterManager = new MonsterManager(io, players, blocks);
 const nightMonsterManager = new NightMonsterManager(io, players);
 
 // Generate trees once on server startup - all clients will see the same trees
-const TREE_COUNT = 80;
-const TREE_SPREAD = 60;
+const TREE_COUNT = 200; // Increased tree count
+const TERRAIN_SIZE = 200; // Match terrain size for full map coverage
 const TREE_SEED = 12345; // Fixed seed for deterministic generation
-const trees: TreeData[] = generateTrees(TREE_COUNT, TREE_SPREAD, TREE_SEED);
+const trees: TreeData[] = generateTrees(TREE_COUNT, TERRAIN_SIZE, TREE_SEED);
 
 // Generate grass once on server startup - all clients will see the same grass
 const GRASS_COUNT = 200;
-const TERRAIN_SIZE = 200;
 const GRASS_SEED = 54321; // Different seed from trees for variety
 const grass: GrassData[] = generateGrass(GRASS_COUNT, TERRAIN_SIZE, GRASS_SEED);
 
