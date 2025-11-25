@@ -421,8 +421,8 @@ export class PlayerController {
                     if (this.blockManager.hasBlock(x, y, z)) {
                         const blockTop = y + blockSize / 2;
                         // Check if player's feet are at or just above this block's top surface
-                        if (blockTop > highestBlockTop && 
-                            blockTop <= playerBottom + 0.25 && 
+                        if (blockTop > highestBlockTop &&
+                            blockTop <= playerBottom + 0.3 &&
                             blockTop >= playerBottom - 0.3) {
                             highestBlockTop = blockTop;
                             foundBlock = true;
@@ -439,20 +439,20 @@ export class PlayerController {
             
             // If player's feet are close to or on the block surface, snap to it
             // This handles both landing from a jump and standing on a block
-            if (distanceToBlock <= 0.25 && distanceToBlock >= -0.3) {
+            if (distanceToBlock <= 0.3 && distanceToBlock >= -0.3) {
                 // Snap player's feet to block surface
                 const newY = highestBlockTop + this.height;
                 
                 // If falling, always snap to block
                 // If jumping up but feet are at or just above block, also snap (landing case)
-                // Don't snap if player is clearly still going up and far above the block
-                const shouldSnap = this.verticalVelocity <= 0 || 
-                                  (distanceToBlock >= -0.15 && distanceToBlock <= 0.25);
-                
+                // Allow landing within 0.3 units above block for reliable staircase climbing
+                const shouldSnap = this.verticalVelocity <= 0 ||
+                                  (distanceToBlock >= -0.15 && distanceToBlock <= 0.3);
+
                 if (shouldSnap) {
-                    // Update velocity and grounded state when landing
-                    // Be more forgiving with landing detection to allow jumping onto higher blocks
-                    if (distanceToBlock <= 0.15) {
+                    // When we snap position, always stop upward velocity and mark as grounded
+                    // This ensures reliable landing when jumping up onto blocks
+                    if (distanceToBlock <= 0.3) {
                         this.verticalVelocity = Math.min(0, this.verticalVelocity);
                         this.isGrounded = true;
                     }
