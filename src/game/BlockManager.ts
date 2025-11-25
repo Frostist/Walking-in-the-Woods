@@ -62,10 +62,10 @@ export class BlockManager {
      * Get block key from position
      */
     private getBlockKey(x: number, y: number, z: number): string {
-        // Round to nearest block position
-        const blockX = Math.round(x / this.blockSize) * this.blockSize;
-        const blockY = Math.round(y / this.blockSize) * this.blockSize;
-        const blockZ = Math.round(z / this.blockSize) * this.blockSize;
+        // Round to nearest block position (blocks are centered at half-integers: 0.5, 1.5, 2.5, ...)
+        const blockX = Math.floor(x / this.blockSize) * this.blockSize + this.blockSize / 2;
+        const blockY = Math.floor(y / this.blockSize) * this.blockSize + this.blockSize / 2;
+        const blockZ = Math.floor(z / this.blockSize) * this.blockSize + this.blockSize / 2;
         return `${blockX},${blockY},${blockZ}`;
     }
 
@@ -98,16 +98,16 @@ export class BlockManager {
 
         // Get material for block type
         const material = this.blockMaterials.get(type) || this.blockMaterials.get('stone')!;
-        
+
         // Create block geometry
         const geometry = new THREE.BoxGeometry(this.blockSize, this.blockSize, this.blockSize);
         const block = new THREE.Mesh(geometry, material.clone());
-        
-        // Position block at grid-aligned position
-        const blockX = Math.round(x / this.blockSize) * this.blockSize;
-        const blockY = Math.round(y / this.blockSize) * this.blockSize;
-        const blockZ = Math.round(z / this.blockSize) * this.blockSize;
-        
+
+        // Position block at grid-aligned position (blocks are centered at half-integers: 0.5, 1.5, 2.5, ...)
+        const blockX = Math.floor(x / this.blockSize) * this.blockSize + this.blockSize / 2;
+        const blockY = Math.floor(y / this.blockSize) * this.blockSize + this.blockSize / 2;
+        const blockZ = Math.floor(z / this.blockSize) * this.blockSize + this.blockSize / 2;
+
         block.position.set(blockX, blockY, blockZ);
         block.castShadow = true;
         block.receiveShadow = true;
