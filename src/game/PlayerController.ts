@@ -358,8 +358,9 @@ export class PlayerController {
                                 if (playerBottom <= blockMax.y + 0.15 && playerBottom >= blockMax.y - 0.2) {
                                     // Landing on top of block - ensure feet are exactly on block surface
                                     finalPosition.y = blockMax.y + this.height;
-                                    // Only stop upward velocity if we're actually on the block
-                                    if (this.verticalVelocity <= 0 || playerBottom <= blockMax.y) {
+                                    // Stop vertical velocity and mark as grounded when landing
+                                    // Allow landing even when jumping up if feet are close to block surface
+                                    if (this.verticalVelocity <= 0 || playerBottom <= blockMax.y + 0.1) {
                                         this.verticalVelocity = 0;
                                         this.isGrounded = true;
                                     }
@@ -450,7 +451,8 @@ export class PlayerController {
                 
                 if (shouldSnap) {
                     // Update velocity and grounded state when landing
-                    if (distanceToBlock <= 0.1) {
+                    // Be more forgiving with landing detection to allow jumping onto higher blocks
+                    if (distanceToBlock <= 0.15) {
                         this.verticalVelocity = Math.min(0, this.verticalVelocity);
                         this.isGrounded = true;
                     }

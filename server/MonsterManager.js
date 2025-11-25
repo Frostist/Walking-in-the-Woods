@@ -273,8 +273,9 @@ export class MonsterManager {
                 const blockX = blockData.x;
                 const blockY = blockData.y;
                 const blockZ = blockData.z;
-                // Check if block is in horizontal range
-                if (blockX < minX || blockX > maxX || blockZ < minZ || blockZ > maxZ) {
+                // Check if block is in horizontal range (account for block size)
+                if (blockX + blockSize/2 < minX || blockX - blockSize/2 > maxX ||
+                    blockZ + blockSize/2 < minZ || blockZ - blockSize/2 > maxZ) {
                     continue;
                 }
                 // Check if block is in vertical range
@@ -447,8 +448,9 @@ export class MonsterManager {
             const blockX = blockData.x;
             const blockY = blockData.y;
             const blockZ = blockData.z;
-            // Check if block is in horizontal range
-            if (blockX < minX || blockX > maxX || blockZ < minZ || blockZ > maxZ) {
+            // Check if block is in horizontal range (account for block size)
+            if (blockX + blockSize/2 < minX || blockX - blockSize/2 > maxX ||
+                blockZ + blockSize/2 < minZ || blockZ - blockSize/2 > maxZ) {
                 continue;
             }
             // Check if block is in vertical range (monster can collide with it)
