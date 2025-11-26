@@ -130,6 +130,11 @@ function getBlockKey(x: number, y: number, z: number): string {
     return `${x},${y},${z}`;
 }
 
+// Game time synchronization - tracks elapsed time for day/night cycle
+// This ensures all players see the same sun/moon position
+const CYCLE_DURATION = 300000; // 5 minutes in milliseconds (matches client)
+let gameStartTime = Date.now();
+
 // Initialize monster manager (pass blocks for collision detection and game start time)
 const monsterManager = new MonsterManager(io, players, blocks, gameStartTime);
 
@@ -146,11 +151,6 @@ const trees: TreeData[] = generateTrees(TREE_COUNT, TERRAIN_SIZE, TREE_SEED);
 const GRASS_COUNT = 200;
 const GRASS_SEED = 54321; // Different seed from trees for variety
 const grass: GrassData[] = generateGrass(GRASS_COUNT, TERRAIN_SIZE, GRASS_SEED);
-
-// Game time synchronization - tracks elapsed time for day/night cycle
-// This ensures all players see the same sun/moon position
-const CYCLE_DURATION = 300000; // 5 minutes in milliseconds (matches client)
-let gameStartTime = Date.now();
 
 // Broadcast game time to all clients every second
 setInterval(() => {

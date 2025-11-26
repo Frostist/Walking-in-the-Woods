@@ -1,3 +1,7 @@
+// Helper function to get block key
+function getBlockKey(x, y, z) {
+    return `${x},${y},${z}`;
+}
 // Constants
 const NIGHT_MONSTER_MAX_HEALTH = 5;
 const NIGHT_MONSTER_SPEED = 2.5;
@@ -9,7 +13,7 @@ const MAX_NIGHT_MONSTERS = 10; // Maximum number of night monsters at once
 const MIN_NIGHT_MONSTERS = 1; // Minimum number of night monsters to spawn
 const NIGHT_MONSTER_SPAWN_RADIUS = 30; // Spawn within this radius of origin
 export class NightMonsterManager {
-    constructor(io, players) {
+    constructor(io, players, blocks, gameStartTime = Date.now()) {
         this.monsters = new Map();
         this.monsterAttackCooldowns = new Map(); // monsterId -> playerId -> lastAttackTime
         this.updateInterval = null;
@@ -17,8 +21,13 @@ export class NightMonsterManager {
         this.isNight = false;
         this.lastDayNightCheck = Date.now();
         this.nextMonsterId = 0;
+        this.blockHits = new Map(); // Track hits per block (blockKey -> hitCount)
+        this.BLOCKS_TO_BREAK = 4; // Number of hits needed to break a block
+        this.gameStartTime = Date.now();
         this.io = io;
         this.players = players;
+        this.blocks = blocks;
+        this.gameStartTime = gameStartTime;
         this.startUpdateLoop();
     }
     startUpdateLoop() {
@@ -52,7 +61,8 @@ export class NightMonsterManager {
     }
     checkDayNightCycle(currentTime) {
         const CYCLE_DURATION = 300000; // 5 minutes
-        const cycleProgress = (currentTime % CYCLE_DURATION) / CYCLE_DURATION;
+        const gameTime = currentTime - this.gameStartTime;
+        const cycleProgress = (gameTime % CYCLE_DURATION) / CYCLE_DURATION;
         // Calculate sun position
         const sunAngle = (cycleProgress * Math.PI * 2) - Math.PI / 2;
         const sunY = Math.sin(sunAngle) * 150; // Same radius as client
@@ -175,13 +185,104 @@ export class NightMonsterManager {
                 const moveDistance = NIGHT_MONSTER_SPEED * (deltaTime / 1000);
                 const dirX = dx / distance;
                 const dirZ = dz / distance;
-                monster.position.x += dirX * moveDistance;
-                monster.position.z += dirZ * moveDistance;
+                const newX = monster.position.x + dirX * moveDistance;
+                const newZ = monster.position.z + dirZ * moveDistance;
+                // Check collision with blocks and handle breaking
+                const finalPos = this.checkBlockCollisionAndBreak(monster, newX, newZ);
+                monster.position.x = finalPos.x;
+                monster.position.z = finalPos.z;
                 monster.rotationY = Math.atan2(dirX, dirZ);
             }
             // Keep at ground level
             monster.position.y = 1.0;
         }
+    }
+    /**
+     * Check collision with blocks, handle breaking, and adjust monster position
+     */
+    checkBlockCollisionAndBreak(monster, newX, newZ) {
+        const blockSize = 1.0;
+        const monsterRadius = 0.5; // Night monster collision radius (smaller than big monster)
+        const monsterY = monster.position.y;
+        const monsterHeight = 1.5; // Night monster height
+        // Check blocks in area around monster
+        const checkRadius = monsterRadius + blockSize * 0.6;
+        const minX = newX - checkRadius;
+        const maxX = newX + checkRadius;
+        const minZ = newZ - checkRadius;
+        const maxZ = newZ + checkRadius;
+        // Monster vertical bounds
+        const monsterBottom = monsterY - monsterHeight / 2;
+        const monsterTop = monsterY + monsterHeight / 2;
+        let finalX = newX;
+        let finalZ = newZ;
+        // Iterate through all blocks and check if they're in the collision area
+        for (const [key, blockData] of Array.from(this.blocks.entries())) {
+            const blockX = blockData.x;
+            const blockY = blockData.y;
+            const blockZ = blockData.z;
+            // Check if block is in horizontal range
+            if (blockX < minX || blockX > maxX || blockZ < minZ || blockZ > maxZ) {
+                continue;
+            }
+            // Check if block is in vertical range (monster can collide with it)
+            const blockBottom = blockY - blockSize / 2;
+            const blockTop = blockY + blockSize / 2;
+            // Check if monster and block overlap vertically
+            if (monsterTop < blockBottom || monsterBottom > blockTop) {
+                continue; // No vertical overlap, skip this block
+            }
+            // Block is in collision range, check horizontal collision
+            const blockMinX = blockX - blockSize / 2;
+            const blockMaxX = blockX + blockSize / 2;
+            const blockMinZ = blockZ - blockSize / 2;
+            const blockMaxZ = blockZ + blockSize / 2;
+            const monsterMinX = finalX - monsterRadius;
+            const monsterMaxX = finalX + monsterRadius;
+            const monsterMinZ = finalZ - monsterRadius;
+            const monsterMaxZ = finalZ + monsterRadius;
+            // Check if monster collides with block (horizontal collision only)
+            if (monsterMaxX > blockMinX && monsterMinX < blockMaxX &&
+                monsterMaxZ > blockMinZ && monsterMinZ < blockMaxZ) {
+                // Hit the block - increment hit count
+                const currentHits = this.blockHits.get(key) || 0;
+                const newHits = currentHits + 1;
+                this.blockHits.set(key, newHits);
+                // If block has been hit enough times, break it
+                if (newHits >= this.BLOCKS_TO_BREAK) {
+                    // Remove block from server
+                    this.blocks.delete(key);
+                    this.blockHits.delete(key);
+                    // Broadcast block removal to all clients
+                    this.io.emit('blockRemoved', blockData);
+                    console.log(`Night monster broke block at (${blockX}, ${blockY}, ${blockZ})`);
+                    // Continue movement through the broken block
+                    continue;
+                }
+                // Block not broken yet, push monster out
+                const overlapX = Math.min(monsterMaxX - blockMinX, blockMaxX - monsterMinX);
+                const overlapZ = Math.min(monsterMaxZ - blockMinZ, blockMaxZ - monsterMinZ);
+                if (overlapX < overlapZ) {
+                    // Push out in X direction
+                    if (finalX > blockX) {
+                        finalX = blockMaxX + monsterRadius;
+                    }
+                    else {
+                        finalX = blockMinX - monsterRadius;
+                    }
+                }
+                else {
+                    // Push out in Z direction
+                    if (finalZ > blockZ) {
+                        finalZ = blockMaxZ + monsterRadius;
+                    }
+                    else {
+                        finalZ = blockMinZ - monsterRadius;
+                    }
+                }
+            }
+        }
+        return { x: finalX, z: finalZ };
     }
     damageMonster(monsterId, damage) {
         const monster = this.monsters.get(monsterId);
