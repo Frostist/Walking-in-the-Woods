@@ -146,11 +146,11 @@ export class RemotePlayer {
     ): void {
         if (!this.healthBarElement) return;
         
-        // Character mesh is positioned at ground level (y=0), head is at y=1.6 relative to mesh
-        // So head world position is at y=1.6, add 0.4 to position health bar above head
+        // currentPosition.y is the player's eye height (includes ground level + 1.6)
+        // Add 0.4 to position health bar above the head
         const headPosition = new THREE.Vector3(
             this.currentPosition.x,
-            1.6 + 0.4, // Head height (1.6) + offset above head (0.4)
+            this.currentPosition.y + 0.4, // Current eye position + offset above head
             this.currentPosition.z
         );
         
