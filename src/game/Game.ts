@@ -625,6 +625,9 @@ export class Game {
         // Once player leaves the spawn zone, they lose protection forever (until respawn)
         if (!inZone && !this.hasLeftSpawnZone) {
             this.hasLeftSpawnZone = true;
+            // Reset health to full when exiting the safe zone
+            // This ensures any damage taken while protected doesn't apply
+            this.character.setHealth(this.character.getMaxHealth());
             this.updateProtectionIndicator();
         }
     }
