@@ -26,7 +26,8 @@ export class PlayerController {
     // Jump and gravity
     private verticalVelocity: number = 0;
     private gravity: number = -20.0; // Gravity acceleration
-    private jumpSpeed: number = 7.0; // Initial jump velocity
+    private jumpHeight: number = 1.15; // Jump height (1.15x block height, where block height is 1.0)
+    private jumpSpeed: number = Math.sqrt(2 * Math.abs(this.gravity) * this.jumpHeight); // Calculate jump speed for 1.15 unit height
     private isGrounded: boolean = false;
     private groundCheckDistance: number = 0.1; // Distance to check for ground
     
@@ -98,14 +99,18 @@ export class PlayerController {
             }
         });
         
-        // Jump with Space key
+        // Jump with Space key - allow jumping when grounded (on ground or on top of blocks)
         document.addEventListener('keydown', (e) => {
             if (!this.controlsEnabled) return;
             
-            if (e.code === 'Space' && this.isGrounded) {
+            if (e.code === 'Space') {
                 e.preventDefault();
-                this.verticalVelocity = this.jumpSpeed;
-                this.isGrounded = false;
+                // Allow jump if grounded (on ground or on top of a block)
+                // We check isGrounded in the update loop, so it should be accurate
+                if (this.isGrounded) {
+                    this.verticalVelocity = this.jumpSpeed;
+                    this.isGrounded = false;
+                }
             }
         });
     }
@@ -289,6 +294,7 @@ export class PlayerController {
     
     /**
      * Check collision with blocks and adjust position
+     * Handles collisions on all sides: top, bottom, and sides
      */
     private checkBlockCollision(newPosition: THREE.Vector3): THREE.Vector3 {
         if (!this.blockManager) {
@@ -300,22 +306,24 @@ export class PlayerController {
         const playerTop = newPosition.y + (this.playerHeight - this.height);
         
         // Check blocks in a small area around the player
+        // Blocks are centered at half-integers (0.5, 1.5, 2.5, ...)
         const checkRadius = this.playerRadius + blockSize * 0.6;
-        const minX = Math.floor((newPosition.x - checkRadius) / blockSize) * blockSize;
-        const maxX = Math.ceil((newPosition.x + checkRadius) / blockSize) * blockSize;
-        const minZ = Math.floor((newPosition.z - checkRadius) / blockSize) * blockSize;
-        const maxZ = Math.ceil((newPosition.z + checkRadius) / blockSize) * blockSize;
+        const minX = Math.floor((newPosition.x - checkRadius) / blockSize) * blockSize + blockSize / 2;
+        const maxX = Math.ceil((newPosition.x + checkRadius) / blockSize) * blockSize + blockSize / 2;
+        const minZ = Math.floor((newPosition.z - checkRadius) / blockSize) * blockSize + blockSize / 2;
+        const maxZ = Math.ceil((newPosition.z + checkRadius) / blockSize) * blockSize + blockSize / 2;
         
         let finalPosition = newPosition.clone();
         
-        // Check all blocks in the area
+        // Check all blocks in the area (iterate by block centers)
         for (let x = minX; x <= maxX; x += blockSize) {
             for (let z = minZ; z <= maxZ; z += blockSize) {
                 // Check multiple Y levels (player can be at different heights)
-                for (let y = Math.floor(playerBottom / blockSize) * blockSize; 
-                     y <= Math.ceil(playerTop / blockSize) * blockSize; 
-                     y += blockSize) {
-                    
+                // Check from below player to above player (iterate by block centers)
+                const checkMinY = Math.floor((playerBottom - blockSize) / blockSize) * blockSize + blockSize / 2;
+                const checkMaxY = Math.ceil((playerTop + blockSize) / blockSize) * blockSize + blockSize / 2;
+                
+                for (let y = checkMinY; y <= checkMaxY; y += blockSize) {
                     if (this.blockManager.hasBlock(x, y, z)) {
                         // Block center is at (x, y, z), so bounds are:
                         const blockMin = new THREE.Vector3(x - blockSize/2, y - blockSize/2, z - blockSize/2);
@@ -337,7 +345,7 @@ export class PlayerController {
                             playerMax.y > blockMin.y && playerMin.y < blockMax.y &&
                             playerMax.z > blockMin.z && playerMin.z < blockMax.z) {
                             
-                            // Handle collision - push player out
+                            // Calculate overlaps in each direction
                             const overlapX = Math.min(
                                 playerMax.x - blockMin.x,
                                 blockMax.x - playerMin.x
@@ -351,36 +359,50 @@ export class PlayerController {
                                 blockMax.y - playerMin.y
                             );
                             
-                            // Push out in the direction of smallest overlap
+                            // Determine collision direction based on smallest overlap
+                            // This ensures we push the player out in the correct direction
                             if (overlapY < overlapX && overlapY < overlapZ) {
-                                // Vertical collision - standing on block or hitting head
-                                // Check if landing on top of block (feet at or just above block surface)
-                                if (playerBottom <= blockMax.y + 0.15 && playerBottom >= blockMax.y - 0.2) {
-                                    // Landing on top of block - ensure feet are exactly on block surface
-                                    finalPosition.y = blockMax.y + this.height;
-                                    // Stop vertical velocity and mark as grounded when landing
-                                    // Allow landing even when jumping up if feet are close to block surface
-                                    if (this.verticalVelocity <= 0 || playerBottom <= blockMax.y + 0.1) {
-                                        this.verticalVelocity = 0;
-                                        this.isGrounded = true;
-                                    }
-                                } else if (this.verticalVelocity > 0 && playerTop > blockMin.y) {
-                                    // Hitting head on block
+                                // Vertical collision - top or bottom of block
+                                if (this.verticalVelocity > 0 && playerTop > blockMin.y && playerBottom < blockMin.y) {
+                                    // Hitting head on bottom of block - push down
                                     finalPosition.y = blockMin.y - (this.playerHeight - this.height);
                                     this.verticalVelocity = 0;
+                                } else if (this.verticalVelocity <= 0 && playerBottom < blockMax.y && playerTop > blockMax.y) {
+                                    // Landing on top of block - push up and snap to top
+                                    finalPosition.y = blockMax.y + this.height;
+                                    this.verticalVelocity = 0;
+                                    this.isGrounded = true;
+                                } else if (playerBottom < blockMax.y && playerTop > blockMin.y) {
+                                    // Player is inside block vertically - push to nearest edge
+                                    const distToTop = Math.abs(playerBottom - blockMax.y);
+                                    const distToBottom = Math.abs(playerTop - blockMin.y);
+                                    if (distToTop < distToBottom) {
+                                        // Closer to top - push up
+                                        finalPosition.y = blockMax.y + this.height;
+                                        this.verticalVelocity = 0;
+                                        this.isGrounded = true;
+                                    } else {
+                                        // Closer to bottom - push down
+                                        finalPosition.y = blockMin.y - (this.playerHeight - this.height);
+                                        this.verticalVelocity = 0;
+                                    }
                                 }
                             } else if (overlapX < overlapZ) {
-                                // Push out horizontally in X direction
+                                // Horizontal collision in X direction - push out to side
                                 if (finalPosition.x > x) {
+                                    // Player is to the right of block - push right
                                     finalPosition.x = blockMax.x + this.playerRadius;
                                 } else {
+                                    // Player is to the left of block - push left
                                     finalPosition.x = blockMin.x - this.playerRadius;
                                 }
                             } else {
-                                // Push out horizontally in Z direction
+                                // Horizontal collision in Z direction - push out to side
                                 if (finalPosition.z > z) {
+                                    // Player is in front of block - push forward
                                     finalPosition.z = blockMax.z + this.playerRadius;
                                 } else {
+                                    // Player is behind block - push backward
                                     finalPosition.z = blockMin.z - this.playerRadius;
                                 }
                             }
@@ -405,19 +427,22 @@ export class PlayerController {
         const blockSize = 1.0;
         const playerBottom = position.y - this.height;
         const checkRadius = this.playerRadius;
-        const minX = Math.floor((position.x - checkRadius) / blockSize) * blockSize;
-        const maxX = Math.ceil((position.x + checkRadius) / blockSize) * blockSize;
-        const minZ = Math.floor((position.z - checkRadius) / blockSize) * blockSize;
-        const maxZ = Math.ceil((position.z + checkRadius) / blockSize) * blockSize;
+        // Blocks are centered at half-integers (0.5, 1.5, 2.5, ...)
+        const minX = Math.floor((position.x - checkRadius) / blockSize) * blockSize + blockSize / 2;
+        const maxX = Math.ceil((position.x + checkRadius) / blockSize) * blockSize + blockSize / 2;
+        const minZ = Math.floor((position.z - checkRadius) / blockSize) * blockSize + blockSize / 2;
+        const maxZ = Math.ceil((position.z + checkRadius) / blockSize) * blockSize + blockSize / 2;
         
         let highestBlockTop = -Infinity;
         let foundBlock = false;
         
-        // Check all blocks in the area around the player
+        // Check all blocks in the area around the player (iterate by block centers)
         for (let x = minX; x <= maxX; x += blockSize) {
             for (let z = minZ; z <= maxZ; z += blockSize) {
                 // Check blocks from ground level up to slightly above player's feet
-                for (let y = 0; y <= Math.ceil((playerBottom + 0.3) / blockSize) * blockSize; y += blockSize) {
+                // Iterate by block centers (0.5, 1.5, 2.5, ...)
+                const checkMaxY = Math.ceil((playerBottom + 0.3) / blockSize) * blockSize + blockSize / 2;
+                for (let y = blockSize / 2; y <= checkMaxY; y += blockSize) {
                     if (this.blockManager.hasBlock(x, y, z)) {
                         const blockTop = y + blockSize / 2;
                         // Check if player's feet are at or just above this block's top surface
@@ -477,19 +502,22 @@ export class PlayerController {
         const blockSize = 1.0;
         const playerBottom = position.y - this.height;
         const checkRadius = this.playerRadius;
-        const minX = Math.floor((position.x - checkRadius) / blockSize) * blockSize;
-        const maxX = Math.ceil((position.x + checkRadius) / blockSize) * blockSize;
-        const minZ = Math.floor((position.z - checkRadius) / blockSize) * blockSize;
-        const maxZ = Math.ceil((position.z + checkRadius) / blockSize) * blockSize;
+        // Blocks are centered at half-integers (0.5, 1.5, 2.5, ...)
+        const minX = Math.floor((position.x - checkRadius) / blockSize) * blockSize + blockSize / 2;
+        const maxX = Math.ceil((position.x + checkRadius) / blockSize) * blockSize + blockSize / 2;
+        const minZ = Math.floor((position.z - checkRadius) / blockSize) * blockSize + blockSize / 2;
+        const maxZ = Math.ceil((position.z + checkRadius) / blockSize) * blockSize + blockSize / 2;
         
         let highestSurface = 0; // Ground level is at y=0
         let foundSurface = false;
         
-        // Check all blocks below the player
+        // Check all blocks below the player (iterate by block centers)
         for (let x = minX; x <= maxX; x += blockSize) {
             for (let z = minZ; z <= maxZ; z += blockSize) {
                 // Check blocks from ground level up to player's current position
-                for (let y = 0; y <= Math.ceil(playerBottom / blockSize) * blockSize + blockSize; y += blockSize) {
+                // Iterate by block centers (0.5, 1.5, 2.5, ...)
+                const checkMaxY = Math.ceil(playerBottom / blockSize) * blockSize + blockSize / 2 + blockSize;
+                for (let y = blockSize / 2; y <= checkMaxY; y += blockSize) {
                     if (this.blockManager.hasBlock(x, y, z)) {
                         const blockTop = y + blockSize / 2;
                         if (blockTop > highestSurface && blockTop <= playerBottom + 0.5) {
@@ -506,6 +534,7 @@ export class PlayerController {
     
     /**
      * Check if player is grounded (on ground or on top of a block)
+     * This is critical for allowing jumps from block tops
      */
     private checkGrounded(): void {
         if (!this.blockManager) {
@@ -518,21 +547,27 @@ export class PlayerController {
         const playerBottom = this.position.y - this.height;
         
         // Check if there's a block or ground directly below the player
-        const checkRadius = this.playerRadius;
-        const minX = Math.floor((this.position.x - checkRadius) / blockSize) * blockSize;
-        const maxX = Math.ceil((this.position.x + checkRadius) / blockSize) * blockSize;
-        const minZ = Math.floor((this.position.z - checkRadius) / blockSize) * blockSize;
-        const maxZ = Math.ceil((this.position.z + checkRadius) / blockSize) * blockSize;
+        // Blocks are centered at half-integers (0.5, 1.5, 2.5, ...)
+        const checkRadius = this.playerRadius + 0.1; // Slightly larger radius for better detection
+        const minX = Math.floor((this.position.x - checkRadius) / blockSize) * blockSize + blockSize / 2;
+        const maxX = Math.ceil((this.position.x + checkRadius) / blockSize) * blockSize + blockSize / 2;
+        const minZ = Math.floor((this.position.z - checkRadius) / blockSize) * blockSize + blockSize / 2;
+        const maxZ = Math.ceil((this.position.z + checkRadius) / blockSize) * blockSize + blockSize / 2;
         
         let foundGround = false;
         let groundY = 0; // Default to ground level
         
+        // Check all blocks in the area below the player (iterate by block centers)
         for (let x = minX; x <= maxX; x += blockSize) {
             for (let z = minZ; z <= maxZ; z += blockSize) {
                 // Check blocks from ground level up to slightly above player's feet
-                for (let y = 0; y <= Math.ceil((playerBottom + 0.2) / blockSize) * blockSize; y += blockSize) {
+                // This allows detection when standing on top of blocks at any height
+                // Iterate by block centers (0.5, 1.5, 2.5, ...)
+                const checkMaxY = Math.ceil((playerBottom + this.groundCheckDistance) / blockSize) * blockSize + blockSize / 2;
+                for (let y = blockSize / 2; y <= checkMaxY; y += blockSize) {
                     if (this.blockManager.hasBlock(x, y, z)) {
                         const blockTop = y + blockSize / 2;
+                        // Check if this block's top is the highest surface below or at player's feet
                         if (blockTop > groundY && blockTop <= playerBottom + this.groundCheckDistance) {
                             groundY = blockTop;
                             foundGround = true;
@@ -546,7 +581,7 @@ export class PlayerController {
         const distanceToGround = playerBottom - groundY;
         if (Math.abs(distanceToGround) <= this.groundCheckDistance) {
             foundGround = true;
-            // Snap feet to ground if very close
+            // Snap feet to ground/block surface if very close (helps with precision)
             if (distanceToGround < 0 && Math.abs(distanceToGround) < 0.05) {
                 this.position.y = groundY + this.height;
             }

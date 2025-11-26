@@ -130,11 +130,11 @@ function getBlockKey(x: number, y: number, z: number): string {
     return `${x},${y},${z}`;
 }
 
-// Initialize monster manager (pass blocks for collision detection)
-const monsterManager = new MonsterManager(io, players, blocks);
+// Initialize monster manager (pass blocks for collision detection and game start time)
+const monsterManager = new MonsterManager(io, players, blocks, gameStartTime);
 
-// Initialize night monster manager
-const nightMonsterManager = new NightMonsterManager(io, players);
+// Initialize night monster manager (pass blocks for collision detection and breaking, and game start time)
+const nightMonsterManager = new NightMonsterManager(io, players, blocks, gameStartTime);
 
 // Generate trees once on server startup - all clients will see the same trees
 const TREE_COUNT = 600; // Increased tree count
