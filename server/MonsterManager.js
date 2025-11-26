@@ -8,21 +8,27 @@ const MONSTER_DAMAGE = 1; // Damage per attack
 const MONSTER_ATTACK_RANGE = 2.0; // Distance at which monster can attack
 const MONSTER_ATTACK_COOLDOWN = 1000; // 1 second between attacks (per player)
 export class MonsterManager {
-    constructor(io, players, blocks) {
+    constructor(io, players, blocks, gameStartTime = Date.now()) {
         this.monsterAttackCooldowns = new Map();
         this.lastMonsterDamager = null; // Track who last damaged the monster
         this.updateInterval = null;
         this.lastMonsterUpdate = Date.now();
+        this.isNight = false;
+        this.lastDayNightCheck = Date.now();
+        this.gameStartTime = Date.now();
+        this.blockHits = new Map(); // Track hits per block (blockKey -> hitCount)
+        this.BLOCKS_TO_BREAK = 4; // Number of hits needed to break a block
         this.io = io;
         this.players = players;
         this.blocks = blocks;
-        // Initialize monster state
+        this.gameStartTime = gameStartTime;
+        // Initialize monster state (but don't spawn until night)
         this.monster = {
             position: { ...MONSTER_SPAWN_POSITION },
             rotationY: 0,
             health: MONSTER_MAX_HEALTH,
             maxHealth: MONSTER_MAX_HEALTH,
-            isAlive: true
+            isAlive: false // Start dead, will spawn at night
         };
         // Start the monster update loop
         this.startUpdateLoop();
@@ -32,17 +38,66 @@ export class MonsterManager {
             const now = Date.now();
             const deltaTime = now - this.lastMonsterUpdate;
             this.lastMonsterUpdate = now;
-            this.updateMonster(deltaTime);
-            // Broadcast monster position to all clients (only if alive)
-            if (this.monster.isAlive) {
-                this.io.emit('monsterUpdate', {
-                    position: this.monster.position,
-                    rotationY: this.monster.rotationY,
-                    health: this.monster.health,
-                    maxHealth: this.monster.maxHealth
-                });
+            // Check day/night cycle every second
+            if (now - this.lastDayNightCheck >= 1000) {
+                this.checkDayNightCycle(now);
+                this.lastDayNightCheck = now;
+            }
+            // Only update monster if it's night
+            if (this.isNight) {
+                this.updateMonster(deltaTime);
+                // Broadcast monster position to all clients (only if alive)
+                if (this.monster.isAlive) {
+                    this.io.emit('monsterUpdate', {
+                        position: this.monster.position,
+                        rotationY: this.monster.rotationY,
+                        health: this.monster.health,
+                        maxHealth: this.monster.maxHealth
+                    });
+                }
             }
         }, MONSTER_UPDATE_INTERVAL);
+    }
+    checkDayNightCycle(currentTime) {
+        const CYCLE_DURATION = 300000; // 5 minutes
+        const gameTime = currentTime - this.gameStartTime;
+        const cycleProgress = (gameTime % CYCLE_DURATION) / CYCLE_DURATION;
+        // Calculate sun position
+        const sunAngle = (cycleProgress * Math.PI * 2) - Math.PI / 2;
+        const sunY = Math.sin(sunAngle) * 150; // Same radius as client
+        const sunHeightNormalized = Math.max(0, Math.min(1, (sunY + 10) / 20));
+        // Day when sun is above 0.3 normalized height
+        const wasNight = this.isNight;
+        this.isNight = sunHeightNormalized <= 0.3;
+        // If transitioning from day to night, spawn monster
+        if (!wasNight && this.isNight) {
+            this.spawnMonster();
+        }
+        // If transitioning from night to day, kill monster
+        if (wasNight && !this.isNight) {
+            this.killMonster();
+        }
+    }
+    spawnMonster() {
+        this.monster.position = { ...MONSTER_SPAWN_POSITION };
+        this.monster.rotationY = 0;
+        this.monster.health = MONSTER_MAX_HEALTH;
+        this.monster.isAlive = true;
+        // Broadcast spawn
+        this.io.emit('monsterRespawned', {
+            position: this.monster.position,
+            rotationY: this.monster.rotationY,
+            health: this.monster.health,
+            maxHealth: this.monster.maxHealth
+        });
+    }
+    killMonster() {
+        if (this.monster.isAlive) {
+            this.monster.isAlive = false;
+            this.monster.health = 0;
+            // Broadcast death
+            this.io.emit('monsterDied');
+        }
     }
     findNearestPlayer() {
         if (this.players.size === 0) {
@@ -124,19 +179,20 @@ export class MonsterManager {
         }
         // Only move if player is far enough away
         if (distance > 0.1) {
-            // Use pathfinding to find the best direction to move
-            const moveDirection = this.findPathToPlayer(nearestPlayer.position);
+            // Use smooth direct movement (simplified from pathfinding)
+            const dirX = dx / distance;
+            const dirZ = dz / distance;
             // Calculate new position
             const moveDistance = MONSTER_SPEED * (deltaTime / 1000);
-            const newX = this.monster.position.x + moveDirection.x * moveDistance;
-            const newZ = this.monster.position.z + moveDirection.z * moveDistance;
-            // Check collision with blocks (safety check)
-            const finalPos = this.checkBlockCollision(newX, newZ);
+            const newX = this.monster.position.x + dirX * moveDistance;
+            const newZ = this.monster.position.z + dirZ * moveDistance;
+            // Check collision with blocks and handle breaking
+            const finalPos = this.checkBlockCollisionAndBreak(newX, newZ);
             // Update position
             this.monster.position.x = finalPos.x;
             this.monster.position.z = finalPos.z;
             // Update rotation to face movement direction
-            this.monster.rotationY = Math.atan2(moveDirection.x, moveDirection.z);
+            this.monster.rotationY = Math.atan2(dirX, dirZ);
         }
         // Keep monster at ground level
         this.monster.position.y = 1.0;
@@ -183,17 +239,20 @@ export class MonsterManager {
         this.lastMonsterDamager = null;
     }
     respawnMonster() {
-        this.monster.position = { ...MONSTER_SPAWN_POSITION };
-        this.monster.rotationY = 0;
-        this.monster.health = MONSTER_MAX_HEALTH;
-        this.monster.isAlive = true;
-        // Broadcast respawn
-        this.io.emit('monsterRespawned', {
-            position: this.monster.position,
-            rotationY: this.monster.rotationY,
-            health: this.monster.health,
-            maxHealth: this.monster.maxHealth
-        });
+        // Only respawn if it's night
+        if (this.isNight) {
+            this.monster.position = { ...MONSTER_SPAWN_POSITION };
+            this.monster.rotationY = 0;
+            this.monster.health = MONSTER_MAX_HEALTH;
+            this.monster.isAlive = true;
+            // Broadcast respawn
+            this.io.emit('monsterRespawned', {
+                position: this.monster.position,
+                rotationY: this.monster.rotationY,
+                health: this.monster.health,
+                maxHealth: this.monster.maxHealth
+            });
+        }
     }
     getMonsterState() {
         return {
@@ -221,212 +280,9 @@ export class MonsterManager {
         return this.monster.isAlive;
     }
     /**
-     * Find path to player using pathfinding logic
-     * Returns a normalized direction vector to move in
+     * Check collision with blocks, handle breaking, and adjust monster position
      */
-    findPathToPlayer(targetPos) {
-        const monsterPos = this.monster.position;
-        const dx = targetPos.x - monsterPos.x;
-        const dz = targetPos.z - monsterPos.z;
-        const distance = Math.sqrt(dx * dx + dz * dz);
-        if (distance < 0.1) {
-            return { x: 0, z: 0 };
-        }
-        // Normalize direction
-        const dirX = dx / distance;
-        const dirZ = dz / distance;
-        // Check if direct path is clear
-        const moveDistance = MONSTER_SPEED * 0.05; // Check a bit ahead
-        const checkX = monsterPos.x + dirX * moveDistance;
-        const checkZ = monsterPos.z + dirZ * moveDistance;
-        if (this.isPathClear(monsterPos.x, monsterPos.z, checkX, checkZ)) {
-            // Direct path is clear, move towards player
-            return { x: dirX, z: dirZ };
-        }
-        // Direct path is blocked, try to find a way around
-        return this.findAlternativePath(targetPos);
-    }
-    /**
-     * Check if a path is clear of obstacles
-     */
-    isPathClear(startX, startZ, endX, endZ) {
-        const blockSize = 1.0;
-        const monsterRadius = 0.6;
-        const monsterY = this.monster.position.y;
-        const monsterHeight = 2.0;
-        // Sample points along the path
-        const steps = 5;
-        for (let i = 0; i <= steps; i++) {
-            const t = i / steps;
-            const checkX = startX + (endX - startX) * t;
-            const checkZ = startZ + (endZ - startZ) * t;
-            // Check if this position would collide with any block
-            const checkRadius = monsterRadius + blockSize * 0.6;
-            const minX = checkX - checkRadius;
-            const maxX = checkX + checkRadius;
-            const minZ = checkZ - checkRadius;
-            const maxZ = checkZ + checkRadius;
-            const monsterBottom = monsterY - monsterHeight / 2;
-            const monsterTop = monsterY + monsterHeight / 2;
-            // Check all blocks
-            for (const [key, blockData] of Array.from(this.blocks.entries())) {
-                const blockX = blockData.x;
-                const blockY = blockData.y;
-                const blockZ = blockData.z;
-                // Check if block is in horizontal range (account for block size)
-                if (blockX + blockSize/2 < minX || blockX - blockSize/2 > maxX ||
-                    blockZ + blockSize/2 < minZ || blockZ - blockSize/2 > maxZ) {
-                    continue;
-                }
-                // Check if block is in vertical range
-                const blockBottom = blockY - blockSize / 2;
-                const blockTop = blockY + blockSize / 2;
-                if (monsterTop < blockBottom || monsterBottom > blockTop) {
-                    continue;
-                }
-                // Check horizontal collision
-                const blockMinX = blockX - blockSize / 2;
-                const blockMaxX = blockX + blockSize / 2;
-                const blockMinZ = blockZ - blockSize / 2;
-                const blockMaxZ = blockZ + blockSize / 2;
-                const monsterMinX = checkX - monsterRadius;
-                const monsterMaxX = checkX + monsterRadius;
-                const monsterMinZ = checkZ - monsterRadius;
-                const monsterMaxZ = checkZ + monsterRadius;
-                if (monsterMaxX > blockMinX && monsterMinX < blockMaxX &&
-                    monsterMaxZ > blockMinZ && monsterMinZ < blockMaxZ) {
-                    return false; // Path is blocked
-                }
-            }
-        }
-        return true; // Path is clear
-    }
-    /**
-     * Find alternative path when direct path is blocked
-     * Uses steering behavior to navigate around obstacles
-     */
-    findAlternativePath(targetPos) {
-        const monsterPos = this.monster.position;
-        const dx = targetPos.x - monsterPos.x;
-        const dz = targetPos.z - monsterPos.z;
-        const distance = Math.sqrt(dx * dx + dz * dz);
-        if (distance < 0.1) {
-            return { x: 0, z: 0 };
-        }
-        // Normalize direction to target
-        const dirX = dx / distance;
-        const dirZ = dz / distance;
-        // Try perpendicular directions (left and right)
-        const perpendicularLeft = { x: -dirZ, z: dirX };
-        const perpendicularRight = { x: dirZ, z: -dirX };
-        const moveDistance = MONSTER_SPEED * 0.05;
-        const checkDistance = 2.0; // How far ahead to check
-        // Try left
-        const leftX = monsterPos.x + perpendicularLeft.x * checkDistance;
-        const leftZ = monsterPos.z + perpendicularLeft.z * checkDistance;
-        const leftCheckX = leftX + dirX * moveDistance;
-        const leftCheckZ = leftZ + dirZ * moveDistance;
-        // Try right
-        const rightX = monsterPos.x + perpendicularRight.x * checkDistance;
-        const rightZ = monsterPos.z + perpendicularRight.z * checkDistance;
-        const rightCheckX = rightX + dirX * moveDistance;
-        const rightCheckZ = rightZ + dirZ * moveDistance;
-        // Check which direction is better
-        const leftClear = this.isPathClear(monsterPos.x, monsterPos.z, leftCheckX, leftCheckZ);
-        const rightClear = this.isPathClear(monsterPos.x, monsterPos.z, rightCheckX, rightCheckZ);
-        // Calculate scores for each direction (prefer direction that gets closer to target)
-        let leftScore = 0;
-        let rightScore = 0;
-        if (leftClear) {
-            const leftToTarget = Math.sqrt(Math.pow(targetPos.x - leftCheckX, 2) +
-                Math.pow(targetPos.z - leftCheckZ, 2));
-            leftScore = distance - leftToTarget; // Positive if getting closer
-        }
-        if (rightClear) {
-            const rightToTarget = Math.sqrt(Math.pow(targetPos.x - rightCheckX, 2) +
-                Math.pow(targetPos.z - rightCheckZ, 2));
-            rightScore = distance - rightToTarget; // Positive if getting closer
-        }
-        // Choose best direction
-        if (leftScore > rightScore && leftScore > 0) {
-            // Blend perpendicular and forward movement
-            const blend = 0.7; // More weight on perpendicular
-            return {
-                x: (perpendicularLeft.x * blend + dirX * (1 - blend)),
-                z: (perpendicularLeft.z * blend + dirZ * (1 - blend))
-            };
-        }
-        else if (rightScore > 0) {
-            // Blend perpendicular and forward movement
-            const blend = 0.7; // More weight on perpendicular
-            return {
-                x: (perpendicularRight.x * blend + dirX * (1 - blend)),
-                z: (perpendicularRight.z * blend + dirZ * (1 - blend))
-            };
-        }
-        // If both are blocked, try to move away from obstacles
-        // Find the direction with least obstacles
-        const obstacleAvoidance = this.getObstacleAvoidanceDirection();
-        if (obstacleAvoidance) {
-            return obstacleAvoidance;
-        }
-        // Fallback: try to move perpendicular to find an opening
-        return perpendicularRight;
-    }
-    /**
-     * Get direction to avoid nearby obstacles
-     */
-    getObstacleAvoidanceDirection() {
-        const monsterPos = this.monster.position;
-        const blockSize = 1.0;
-        const monsterRadius = 0.6;
-        const checkRadius = 3.0; // Check obstacles within this radius
-        let avoidX = 0;
-        let avoidZ = 0;
-        let obstacleCount = 0;
-        // Find nearby obstacles and calculate avoidance vector
-        for (const [key, blockData] of Array.from(this.blocks.entries())) {
-            const blockX = blockData.x;
-            const blockY = blockData.y;
-            const blockZ = blockData.z;
-            const dx = blockX - monsterPos.x;
-            const dz = blockZ - monsterPos.z;
-            const distance = Math.sqrt(dx * dx + dz * dz);
-            if (distance > checkRadius || distance < 0.1) {
-                continue;
-            }
-            // Check vertical overlap
-            const monsterY = this.monster.position.y;
-            const monsterHeight = 2.0;
-            const blockBottom = blockY - blockSize / 2;
-            const blockTop = blockY + blockSize / 2;
-            const monsterBottom = monsterY - monsterHeight / 2;
-            const monsterTop = monsterY + monsterHeight / 2;
-            if (monsterTop < blockBottom || monsterBottom > blockTop) {
-                continue;
-            }
-            // Calculate avoidance direction (away from obstacle)
-            const avoidDirX = -dx / distance;
-            const avoidDirZ = -dz / distance;
-            const weight = 1.0 / (distance + 0.1); // Closer obstacles have more weight
-            avoidX += avoidDirX * weight;
-            avoidZ += avoidDirZ * weight;
-            obstacleCount++;
-        }
-        if (obstacleCount === 0) {
-            return null;
-        }
-        // Normalize avoidance direction
-        const length = Math.sqrt(avoidX * avoidX + avoidZ * avoidZ);
-        if (length > 0.1) {
-            return { x: avoidX / length, z: avoidZ / length };
-        }
-        return null;
-    }
-    /**
-     * Check collision with blocks and adjust monster position
-     */
-    checkBlockCollision(newX, newZ) {
+    checkBlockCollisionAndBreak(newX, newZ) {
         const blockSize = 1.0;
         const monsterRadius = 0.6; // Monster collision radius
         const monsterY = this.monster.position.y;
@@ -443,14 +299,12 @@ export class MonsterManager {
         let finalX = newX;
         let finalZ = newZ;
         // Iterate through all blocks and check if they're in the collision area
-        // This approach handles any key format and ensures we check all blocks
         for (const [key, blockData] of Array.from(this.blocks.entries())) {
             const blockX = blockData.x;
             const blockY = blockData.y;
             const blockZ = blockData.z;
-            // Check if block is in horizontal range (account for block size)
-            if (blockX + blockSize/2 < minX || blockX - blockSize/2 > maxX ||
-                blockZ + blockSize/2 < minZ || blockZ - blockSize/2 > maxZ) {
+            // Check if block is in horizontal range
+            if (blockX < minX || blockX > maxX || blockZ < minZ || blockZ > maxZ) {
                 continue;
             }
             // Check if block is in vertical range (monster can collide with it)
@@ -472,7 +326,22 @@ export class MonsterManager {
             // Check if monster collides with block (horizontal collision only)
             if (monsterMaxX > blockMinX && monsterMinX < blockMaxX &&
                 monsterMaxZ > blockMinZ && monsterMinZ < blockMaxZ) {
-                // Push monster out of block
+                // Hit the block - increment hit count
+                const currentHits = this.blockHits.get(key) || 0;
+                const newHits = currentHits + 1;
+                this.blockHits.set(key, newHits);
+                // If block has been hit enough times, break it
+                if (newHits >= this.BLOCKS_TO_BREAK) {
+                    // Remove block from server
+                    this.blocks.delete(key);
+                    this.blockHits.delete(key);
+                    // Broadcast block removal to all clients
+                    this.io.emit('blockRemoved', blockData);
+                    console.log(`Monster broke block at (${blockX}, ${blockY}, ${blockZ})`);
+                    // Continue movement through the broken block
+                    continue;
+                }
+                // Block not broken yet, push monster out
                 const overlapX = Math.min(monsterMaxX - blockMinX, blockMaxX - monsterMinX);
                 const overlapZ = Math.min(monsterMaxZ - blockMinZ, blockMaxZ - monsterMinZ);
                 if (overlapX < overlapZ) {

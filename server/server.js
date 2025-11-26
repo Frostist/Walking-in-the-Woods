@@ -113,10 +113,14 @@ const blocks = new Map();
 function getBlockKey(x, y, z) {
     return `${x},${y},${z}`;
 }
-// Initialize monster manager (pass blocks for collision detection)
-const monsterManager = new MonsterManager(io, players, blocks);
-// Initialize night monster manager
-const nightMonsterManager = new NightMonsterManager(io, players);
+// Game time synchronization - tracks elapsed time for day/night cycle
+// This ensures all players see the same sun/moon position
+const CYCLE_DURATION = 300000; // 5 minutes in milliseconds (matches client)
+let gameStartTime = Date.now();
+// Initialize monster manager (pass blocks for collision detection and game start time)
+const monsterManager = new MonsterManager(io, players, blocks, gameStartTime);
+// Initialize night monster manager (pass blocks for collision detection and breaking, and game start time)
+const nightMonsterManager = new NightMonsterManager(io, players, blocks, gameStartTime);
 // Generate trees once on server startup - all clients will see the same trees
 const TREE_COUNT = 600; // Increased tree count
 const TERRAIN_SIZE = 200; // Match terrain size for full map coverage
@@ -126,10 +130,6 @@ const trees = generateTrees(TREE_COUNT, TERRAIN_SIZE, TREE_SEED);
 const GRASS_COUNT = 200;
 const GRASS_SEED = 54321; // Different seed from trees for variety
 const grass = generateGrass(GRASS_COUNT, TERRAIN_SIZE, GRASS_SEED);
-// Game time synchronization - tracks elapsed time for day/night cycle
-// This ensures all players see the same sun/moon position
-const CYCLE_DURATION = 300000; // 5 minutes in milliseconds (matches client)
-let gameStartTime = Date.now();
 // Broadcast game time to all clients every second
 setInterval(() => {
     const gameTime = Date.now() - gameStartTime;
