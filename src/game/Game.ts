@@ -237,12 +237,16 @@ export class Game {
         });
 
         this.networkManager.onNightMonstersDied((monsterIds) => {
+            console.log(`☀️ Sunrise! ${monsterIds.length} night monsters burning away...`);
             for (const monsterId of monsterIds) {
                 const nightMonster = this.nightMonsters.get(monsterId);
                 if (nightMonster) {
                     nightMonster.die();
-                    nightMonster.dispose();
-                    this.nightMonsters.delete(monsterId);
+                    // Delay disposal to allow burn animation to play
+                    setTimeout(() => {
+                        nightMonster.dispose();
+                        this.nightMonsters.delete(monsterId);
+                    }, 600); // 600ms to allow the 500ms burn animation to complete
                 }
             }
         });

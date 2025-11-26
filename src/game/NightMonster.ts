@@ -205,10 +205,68 @@ export class NightMonster {
 
     /**
      * Handle monster death (called when day comes)
+     * Plays a "burn" dissolve effect when dying to sunlight
      */
     public die(): void {
         this.isAlive = false;
-        this.mesh.visible = false;
+        
+        // Play burn/dissolve effect before hiding
+        this.playBurnEffect();
+    }
+    
+    /**
+     * Play a burning/dissolve effect when monster dies to sunlight
+     */
+    private playBurnEffect(): void {
+        // Change all materials to show burning effect
+        this.mesh.traverse((child) => {
+            if (child instanceof THREE.Mesh && child.material) {
+                const material = child.material as THREE.MeshStandardMaterial;
+                // Make it glow orange/red like burning
+                material.emissive = new THREE.Color(0xff4400);
+                material.emissiveIntensity = 2.0;
+            }
+        });
+        
+        // Animate scale down and fade over 500ms
+        const startTime = performance.now();
+        const duration = 500;
+        const initialScale = this.mesh.scale.clone();
+        
+        const animate = () => {
+            const elapsed = performance.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            
+            // Scale down
+            const scale = 1 - progress;
+            this.mesh.scale.set(
+                initialScale.x * scale,
+                initialScale.y * scale,
+                initialScale.z * scale
+            );
+            
+            // Move up slightly (like dissolving into the air)
+            this.mesh.position.y += 0.02;
+            
+            // Update emissive intensity
+            this.mesh.traverse((child) => {
+                if (child instanceof THREE.Mesh && child.material) {
+                    const material = child.material as THREE.MeshStandardMaterial;
+                    material.emissiveIntensity = 2.0 * (1 - progress);
+                    material.opacity = 1 - progress;
+                    material.transparent = true;
+                }
+            });
+            
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                // Hide mesh after animation completes
+                this.mesh.visible = false;
+            }
+        };
+        
+        requestAnimationFrame(animate);
     }
 
     /**

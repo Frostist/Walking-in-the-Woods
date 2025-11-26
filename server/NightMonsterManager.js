@@ -76,14 +76,17 @@ export class NightMonsterManager {
         this.isNight = sunHeightNormalized <= 0.3;
         // If transitioning from day to night, spawn monsters
         if (!wasNight && this.isNight) {
+            console.log(`🌙 Day → Night transition detected (sunHeight: ${sunHeightNormalized.toFixed(3)})`);
             this.spawnNightMonsters();
         }
         // If transitioning from night to day, kill all monsters
         if (wasNight && !this.isNight) {
+            console.log(`☀️ Night → Day transition detected (sunHeight: ${sunHeightNormalized.toFixed(3)})`);
             this.killAllMonsters();
         }
     }
     spawnNightMonsters() {
+        console.log('🌙 Night falls! Spawning night monsters...');
         // Spawn a random number of monsters between MIN and MAX
         const spawnCount = Math.floor(Math.random() * (MAX_NIGHT_MONSTERS - MIN_NIGHT_MONSTERS + 1)) + MIN_NIGHT_MONSTERS;
         for (let i = 0; i < spawnCount; i++) {
@@ -117,6 +120,12 @@ export class NightMonsterManager {
         this.io.emit('nightMonstersSpawned', monstersArray);
     }
     killAllMonsters() {
+        const monsterCount = this.monsters.size;
+        if (monsterCount === 0) {
+            console.log('☀️ Sunrise: No night monsters to kill');
+            return;
+        }
+        console.log(`☀️ Sunrise! Killing ${monsterCount} night monsters`);
         // Kill all monsters
         for (const monster of this.monsters.values()) {
             monster.isAlive = false;
@@ -128,6 +137,8 @@ export class NightMonsterManager {
         // Clear monsters (they'll respawn next night)
         this.monsters.clear();
         this.monsterAttackCooldowns.clear();
+        this.blockHits.clear();
+        console.log(`☀️ Night monsters despawned. Event sent to all clients.`);
     }
     /**
      * Check if a position is inside the spawn zone
