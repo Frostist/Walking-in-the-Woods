@@ -7,6 +7,9 @@ const MONSTER_RESPAWN_TIME = 30000; // 30 seconds to respawn after death
 const MONSTER_DAMAGE = 1; // Damage per attack
 const MONSTER_ATTACK_RANGE = 2.0; // Distance at which monster can attack
 const MONSTER_ATTACK_COOLDOWN = 1000; // 1 second between attacks (per player)
+// Safe spawn zone constants (must match client-side values)
+const SPAWN_ZONE_CENTER = { x: 0, z: 0 };
+const SPAWN_ZONE_RADIUS = 8;
 export class MonsterManager {
     constructor(io, players, blocks, gameStartTime = Date.now()) {
         this.monsterAttackCooldowns = new Map();
@@ -18,6 +21,7 @@ export class MonsterManager {
         this.gameStartTime = Date.now();
         this.blockHits = new Map(); // Track hits per block (blockKey -> hitCount)
         this.BLOCKS_TO_BREAK = 4; // Number of hits needed to break a block
+        this.playerSpawnProtection = new Map(); // Track spawn protection per player (true = still protected)
         this.io = io;
         this.players = players;
         this.blocks = blocks;
@@ -99,6 +103,46 @@ export class MonsterManager {
             this.io.emit('monsterDied');
         }
     }
+    /**
+     * Check if a position is inside the spawn zone
+     */
+    isInSpawnZone(x, z) {
+        const dx = x - SPAWN_ZONE_CENTER.x;
+        const dz = z - SPAWN_ZONE_CENTER.z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+        return distance <= SPAWN_ZONE_RADIUS;
+    }
+    /**
+     * Check if a player has spawn protection
+     */
+    hasSpawnProtection(playerId) {
+        return this.playerSpawnProtection.get(playerId) === true;
+    }
+    /**
+     * Update spawn protection for all players
+     * Players lose protection when they leave the spawn zone
+     */
+    updateSpawnProtection() {
+        for (const player of this.players.values()) {
+            const hasProtection = this.playerSpawnProtection.get(player.id);
+            // If player has protection and is outside the zone, remove protection
+            if (hasProtection && !this.isInSpawnZone(player.position.x, player.position.z)) {
+                this.playerSpawnProtection.set(player.id, false);
+            }
+        }
+    }
+    /**
+     * Grant spawn protection to a player (called on join or respawn)
+     */
+    grantSpawnProtection(playerId) {
+        this.playerSpawnProtection.set(playerId, true);
+    }
+    /**
+     * Remove spawn protection tracking for a player (called on disconnect)
+     */
+    removeSpawnProtection(playerId) {
+        this.playerSpawnProtection.delete(playerId);
+    }
     findNearestPlayer() {
         if (this.players.size === 0) {
             return null;
@@ -145,6 +189,8 @@ export class MonsterManager {
         if (player) {
             player.health = player.maxHealth;
             player.isDead = false;
+            // Grant spawn protection when respawning
+            this.grantSpawnProtection(playerId);
         }
     }
     updateMonster(deltaTime) {
@@ -152,6 +198,8 @@ export class MonsterManager {
         if (!this.monster.isAlive) {
             return;
         }
+        // Update spawn protection for all players
+        this.updateSpawnProtection();
         const nearestPlayer = this.findNearestPlayer();
         if (!nearestPlayer) {
             return; // No players to follow
@@ -161,7 +209,8 @@ export class MonsterManager {
         const dz = nearestPlayer.position.z - this.monster.position.z;
         const distance = Math.sqrt(dx * dx + dz * dz);
         // Check if monster is close enough to attack
-        if (distance <= MONSTER_ATTACK_RANGE) {
+        // Only attack if player doesn't have spawn protection
+        if (distance <= MONSTER_ATTACK_RANGE && !this.hasSpawnProtection(nearestPlayer.id)) {
             const now = Date.now();
             const lastAttackTime = this.monsterAttackCooldowns.get(nearestPlayer.id) || 0;
             // Check if cooldown has expired

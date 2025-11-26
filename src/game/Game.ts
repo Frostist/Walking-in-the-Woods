@@ -32,6 +32,12 @@ export class Game {
     private lastShotTime: number = 0;
     private shotCooldown: number = 100; // Milliseconds between shots
     private isDead: boolean = false;
+    
+    // Safe spawn zone properties
+    private readonly SPAWN_ZONE_CENTER = new THREE.Vector3(0, 0, 0);
+    private readonly SPAWN_ZONE_RADIUS = 8; // 8 unit radius safe zone
+    private hasLeftSpawnZone: boolean = false;
+    private spawnZoneVisual: THREE.Group | null = null;
 
     constructor() {
         // Create scene
@@ -116,6 +122,10 @@ export class Game {
 
         // Setup scene
         this.sceneManager.setup();
+        
+        // Create spawn zone visual
+        this.createSpawnZoneVisual();
+        
         this.updateLoadingProgress(20, 'Loading character...');
 
         // Load gun for local character
@@ -175,7 +185,10 @@ export class Game {
                 // Local player took damage - apply it (this handles server-synchronized damage)
                 // Note: We also apply damage immediately on hit detection, but server callback
                 // ensures synchronization across all clients
-                this.character.takeDamage(damage);
+                // Only apply damage if player doesn't have spawn protection
+                if (!this.hasSpawnProtection()) {
+                    this.character.takeDamage(damage);
+                }
             } else {
                 // Remote player took damage
                 const remotePlayer = this.remotePlayers.get(playerId);
@@ -501,6 +514,43 @@ export class Game {
         `;
         document.body.appendChild(heartsContainer);
         
+        // Create spawn protection indicator
+        const protectionIndicator = document.createElement('div');
+        protectionIndicator.id = 'protection-indicator';
+        protectionIndicator.style.cssText = `
+            position: absolute;
+            top: 50px;
+            right: 10px;
+            background: linear-gradient(135deg, rgba(0, 200, 255, 0.9), rgba(0, 150, 255, 0.9));
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            z-index: 100;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            box-shadow: 0 2px 10px rgba(0, 200, 255, 0.4);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            animation: pulse-protection 2s ease-in-out infinite;
+        `;
+        protectionIndicator.innerHTML = `
+            <span style="font-size: 16px;">🛡️</span>
+            <span>Protected</span>
+        `;
+        document.body.appendChild(protectionIndicator);
+        
+        // Add pulse animation style
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes pulse-protection {
+                0%, 100% { opacity: 1; transform: scale(1); }
+                50% { opacity: 0.8; transform: scale(1.02); }
+            }
+        `;
+        document.head.appendChild(style);
+        
         // Create respawn popup (initially hidden)
         const respawnPopup = document.createElement('div');
         respawnPopup.id = 'respawn-popup';
@@ -542,6 +592,114 @@ export class Game {
         // Initial hearts display
         const initialHealth = this.character.getHealth();
         this.updateHeartsUI(initialHealth);
+    }
+    
+    /**
+     * Check if player is currently inside the spawn zone
+     */
+    private isInSpawnZone(position: THREE.Vector3): boolean {
+        // Use horizontal distance only (ignore Y axis)
+        const horizontalDistance = Math.sqrt(
+            Math.pow(position.x - this.SPAWN_ZONE_CENTER.x, 2) +
+            Math.pow(position.z - this.SPAWN_ZONE_CENTER.z, 2)
+        );
+        return horizontalDistance <= this.SPAWN_ZONE_RADIUS;
+    }
+    
+    /**
+     * Check if player has spawn protection (in zone and hasn't left yet)
+     */
+    private hasSpawnProtection(): boolean {
+        return !this.hasLeftSpawnZone;
+    }
+    
+    /**
+     * Update spawn protection status based on player position
+     */
+    private updateSpawnProtection(): void {
+        if (this.isDead) return;
+        
+        const playerPosition = this.playerController.getPosition();
+        const inZone = this.isInSpawnZone(playerPosition);
+        
+        // Once player leaves the spawn zone, they lose protection forever (until respawn)
+        if (!inZone && !this.hasLeftSpawnZone) {
+            this.hasLeftSpawnZone = true;
+            this.updateProtectionIndicator();
+        }
+    }
+    
+    /**
+     * Update the protection indicator UI
+     */
+    private updateProtectionIndicator(): void {
+        const indicator = document.getElementById('protection-indicator');
+        if (indicator) {
+            if (this.hasSpawnProtection()) {
+                indicator.style.display = 'flex';
+            } else {
+                indicator.style.display = 'none';
+            }
+        }
+    }
+    
+    /**
+     * Create the visual spawn zone indicator in the scene
+     */
+    private createSpawnZoneVisual(): void {
+        this.spawnZoneVisual = new THREE.Group();
+        
+        // Create a circular ring on the ground
+        const ringGeometry = new THREE.RingGeometry(
+            this.SPAWN_ZONE_RADIUS - 0.1,
+            this.SPAWN_ZONE_RADIUS,
+            64
+        );
+        const ringMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00c8ff,
+            transparent: true,
+            opacity: 0.6,
+            side: THREE.DoubleSide
+        });
+        const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+        ring.rotation.x = -Math.PI / 2; // Lay flat on ground
+        ring.position.y = 0.02; // Slightly above ground to prevent z-fighting
+        this.spawnZoneVisual.add(ring);
+        
+        // Create a subtle filled circle for the safe zone area
+        const circleGeometry = new THREE.CircleGeometry(this.SPAWN_ZONE_RADIUS, 64);
+        const circleMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00c8ff,
+            transparent: true,
+            opacity: 0.1,
+            side: THREE.DoubleSide
+        });
+        const circle = new THREE.Mesh(circleGeometry, circleMaterial);
+        circle.rotation.x = -Math.PI / 2;
+        circle.position.y = 0.01;
+        this.spawnZoneVisual.add(circle);
+        
+        // Create vertical cylinder outline (like a force field)
+        const cylinderGeometry = new THREE.CylinderGeometry(
+            this.SPAWN_ZONE_RADIUS,
+            this.SPAWN_ZONE_RADIUS,
+            4, // Height
+            64,
+            1,
+            true // Open ended
+        );
+        const cylinderMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00c8ff,
+            transparent: true,
+            opacity: 0.08,
+            side: THREE.DoubleSide
+        });
+        const cylinder = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
+        cylinder.position.y = 2; // Center vertically
+        this.spawnZoneVisual.add(cylinder);
+        
+        this.spawnZoneVisual.position.copy(this.SPAWN_ZONE_CENTER);
+        this.scene.add(this.spawnZoneVisual);
     }
     
     private updateHeartsUI(health: number): void {
@@ -690,6 +848,10 @@ export class Game {
         
         // Reset player position to spawn (0, 1.6, 0) - Y is eye height
         this.playerController.setPosition(0, 1.6, 0);
+        
+        // Reset spawn protection - player gets protection again until they leave the zone
+        this.hasLeftSpawnZone = false;
+        this.updateProtectionIndicator();
         
         // Notify server that player has respawned
         this.networkManager.sendPlayerRespawned();
@@ -843,6 +1005,9 @@ export class Game {
         if (!this.isDead) {
             // Update player controller (handles movement and camera)
             this.playerController.update(deltaTime);
+            
+            // Update spawn protection status
+            this.updateSpawnProtection();
         }
 
         // Update character based on camera mode (only if not dead)
@@ -906,12 +1071,16 @@ export class Game {
             // Check collision with local player (if bullet wasn't shot by local player)
             if (bullet.getShooterId() !== localPlayerId) {
                 if (this.checkBulletCharacterCollision(bullet, this.character.getMesh())) {
-                    // Remote bullet hit local player - apply damage immediately for responsiveness
-                    this.character.takeDamage(1);
-                    // Also notify server (server will broadcast damage for synchronization)
-                    if (localPlayerId) {
-                        this.networkManager.sendPlayerDamaged(localPlayerId, 1);
+                    // Check if player has spawn protection
+                    if (!this.hasSpawnProtection()) {
+                        // Remote bullet hit local player - apply damage immediately for responsiveness
+                        this.character.takeDamage(1);
+                        // Also notify server (server will broadcast damage for synchronization)
+                        if (localPlayerId) {
+                            this.networkManager.sendPlayerDamaged(localPlayerId, 1);
+                        }
                     }
+                    // Bullet is destroyed even if player is protected
                     bullet.dispose();
                     return false;
                 }
@@ -1137,6 +1306,12 @@ export class Game {
         
         // Dispose block manager
         this.blockManager.dispose();
+        
+        // Dispose spawn zone visual
+        if (this.spawnZoneVisual) {
+            this.scene.remove(this.spawnZoneVisual);
+            this.spawnZoneVisual = null;
+        }
         
         // Disconnect from server
         this.networkManager.disconnect();

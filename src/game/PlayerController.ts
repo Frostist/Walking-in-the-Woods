@@ -106,7 +106,6 @@ export class PlayerController {
             if (e.code === 'Space') {
                 e.preventDefault();
                 // Allow jump if grounded (on ground or on top of a block)
-                // We check isGrounded in the update loop, so it should be accurate
                 if (this.isGrounded) {
                     this.verticalVelocity = this.jumpSpeed;
                     this.isGrounded = false;
@@ -458,31 +457,21 @@ export class PlayerController {
         }
         
         // If we found a block the player is landing on, snap feet to it
-        if (foundBlock && highestBlockTop !== -Infinity) {
+        // But only when falling - don't interfere with jumping up
+        if (foundBlock && highestBlockTop !== -Infinity && this.verticalVelocity <= 0) {
             // Calculate distance from player's feet to block top
             const distanceToBlock = playerBottom - highestBlockTop;
             
             // If player's feet are close to or on the block surface, snap to it
-            // This handles both landing from a jump and standing on a block
+            // This handles landing from a jump and standing on a block
             if (distanceToBlock <= 0.3 && distanceToBlock >= -0.3) {
                 // Snap player's feet to block surface
                 const newY = highestBlockTop + this.height;
                 
-                // If falling, always snap to block
-                // If jumping up but feet are at or just above block, also snap (landing case)
-                // Allow landing within 0.3 units above block for reliable staircase climbing
-                const shouldSnap = this.verticalVelocity <= 0 ||
-                                  (distanceToBlock >= -0.15 && distanceToBlock <= 0.3);
-
-                if (shouldSnap) {
-                    // When we snap position, always stop upward velocity and mark as grounded
-                    // This ensures reliable landing when jumping up onto blocks
-                    if (distanceToBlock <= 0.3) {
-                        this.verticalVelocity = Math.min(0, this.verticalVelocity);
-                        this.isGrounded = true;
-                    }
-                    return new THREE.Vector3(position.x, newY, position.z);
-                }
+                // Stop falling and mark as grounded
+                this.verticalVelocity = 0;
+                this.isGrounded = true;
+                return new THREE.Vector3(position.x, newY, position.z);
             }
         }
         
@@ -546,6 +535,13 @@ export class PlayerController {
         const blockSize = 1.0;
         const playerBottom = this.position.y - this.height;
         
+        // Don't check for ground if actively jumping up
+        // This prevents the snap from fighting with the jump
+        if (this.verticalVelocity > 0) {
+            this.isGrounded = false;
+            return;
+        }
+        
         // Check if there's a block or ground directly below the player
         // Blocks are centered at half-integers (0.5, 1.5, 2.5, ...)
         const checkRadius = this.playerRadius + 0.1; // Slightly larger radius for better detection
@@ -567,10 +563,20 @@ export class PlayerController {
                 for (let y = blockSize / 2; y <= checkMaxY; y += blockSize) {
                     if (this.blockManager.hasBlock(x, y, z)) {
                         const blockTop = y + blockSize / 2;
-                        // Check if this block's top is the highest surface below or at player's feet
-                        if (blockTop > groundY && blockTop <= playerBottom + this.groundCheckDistance) {
-                            groundY = blockTop;
+                        const distanceToBlock = playerBottom - blockTop;
+                        
+                        // Check if player is standing on this block (within groundCheckDistance)
+                        if (Math.abs(distanceToBlock) <= this.groundCheckDistance) {
+                            // Found a block we're standing on - mark as grounded immediately
+                            this.isGrounded = true;
+                            // Track highest block for snapping
+                            if (blockTop > groundY) {
+                                groundY = blockTop;
+                            }
                             foundGround = true;
+                        } else if (blockTop > groundY && blockTop <= playerBottom + this.groundCheckDistance) {
+                            // Track highest block below player for distance check later
+                            groundY = blockTop;
                         }
                     }
                 }
@@ -579,10 +585,12 @@ export class PlayerController {
         
         // Check if player's feet are on or very close to the ground/block surface
         const distanceToGround = playerBottom - groundY;
-        if (Math.abs(distanceToGround) <= this.groundCheckDistance) {
+        // Allow player to be slightly above the block (within groundCheckDistance) to account for floating point precision
+        if (distanceToGround >= -this.groundCheckDistance && distanceToGround <= this.groundCheckDistance) {
             foundGround = true;
             // Snap feet to ground/block surface if very close (helps with precision)
-            if (distanceToGround < 0 && Math.abs(distanceToGround) < 0.05) {
+            // Only snap if not actively moving upward
+            if (Math.abs(distanceToGround) < 0.05 && this.verticalVelocity <= 0) {
                 this.position.y = groundY + this.height;
             }
         }

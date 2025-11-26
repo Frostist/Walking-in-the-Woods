@@ -45,6 +45,10 @@ const MAX_NIGHT_MONSTERS = 10; // Maximum number of night monsters at once
 const MIN_NIGHT_MONSTERS = 1; // Minimum number of night monsters to spawn
 const NIGHT_MONSTER_SPAWN_RADIUS = 30; // Spawn within this radius of origin
 
+// Safe spawn zone constants (must match client-side values)
+const SPAWN_ZONE_CENTER = { x: 0, z: 0 };
+const SPAWN_ZONE_RADIUS = 8;
+
 export class NightMonsterManager {
     private monsters: Map<string, NightMonsterState> = new Map();
     private monsterAttackCooldowns: Map<string, Map<string, number>> = new Map(); // monsterId -> playerId -> lastAttackTime
@@ -59,6 +63,7 @@ export class NightMonsterManager {
     private blockHits: Map<string, number> = new Map(); // Track hits per block (blockKey -> hitCount)
     private readonly BLOCKS_TO_BREAK = 4; // Number of hits needed to break a block
     private gameStartTime: number = Date.now();
+    private playerSpawnProtection: Map<string, boolean> = new Map(); // Track spawn protection per player
 
     constructor(io: Server, players: Map<string, PlayerState>, blocks: Map<string, BlockData>, gameStartTime: number = Date.now()) {
         this.io = io;
@@ -182,6 +187,52 @@ export class NightMonsterManager {
         this.monsterAttackCooldowns.clear();
     }
 
+    /**
+     * Check if a position is inside the spawn zone
+     */
+    private isInSpawnZone(x: number, z: number): boolean {
+        const dx = x - SPAWN_ZONE_CENTER.x;
+        const dz = z - SPAWN_ZONE_CENTER.z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+        return distance <= SPAWN_ZONE_RADIUS;
+    }
+    
+    /**
+     * Check if a player has spawn protection
+     */
+    private hasSpawnProtection(playerId: string): boolean {
+        return this.playerSpawnProtection.get(playerId) === true;
+    }
+    
+    /**
+     * Update spawn protection for all players
+     * Players lose protection when they leave the spawn zone
+     */
+    private updateSpawnProtection(): void {
+        for (const player of this.players.values()) {
+            const hasProtection = this.playerSpawnProtection.get(player.id);
+            
+            // If player has protection and is outside the zone, remove protection
+            if (hasProtection && !this.isInSpawnZone(player.position.x, player.position.z)) {
+                this.playerSpawnProtection.set(player.id, false);
+            }
+        }
+    }
+    
+    /**
+     * Grant spawn protection to a player (called on join or respawn)
+     */
+    public grantSpawnProtection(playerId: string): void {
+        this.playerSpawnProtection.set(playerId, true);
+    }
+    
+    /**
+     * Remove spawn protection tracking for a player (called on disconnect)
+     */
+    public removeSpawnProtection(playerId: string): void {
+        this.playerSpawnProtection.delete(playerId);
+    }
+    
     private findNearestPlayer(monsterPos: { x: number; y: number; z: number }): PlayerState | null {
         if (this.players.size === 0) {
             return null;
@@ -209,6 +260,9 @@ export class NightMonsterManager {
     }
 
     private updateMonsters(deltaTime: number): void {
+        // Update spawn protection for all players
+        this.updateSpawnProtection();
+        
         for (const monster of this.monsters.values()) {
             if (!monster.isAlive) {
                 continue;
@@ -226,7 +280,8 @@ export class NightMonsterManager {
             const distance = Math.sqrt(dx * dx + dz * dz);
             
             // Check if monster is close enough to attack
-            if (distance <= NIGHT_MONSTER_ATTACK_RANGE) {
+            // Only attack if player doesn't have spawn protection
+            if (distance <= NIGHT_MONSTER_ATTACK_RANGE && !this.hasSpawnProtection(nearestPlayer.id)) {
                 const now = Date.now();
                 const cooldowns = this.monsterAttackCooldowns.get(monster.id);
                 if (cooldowns) {

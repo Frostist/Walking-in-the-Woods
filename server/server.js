@@ -148,6 +148,9 @@ io.on('connection', (socket) => {
         name: 'Player' // Default name
     };
     players.set(socket.id, playerState);
+    // Grant spawn protection to new player
+    monsterManager.grantSpawnProtection(socket.id);
+    nightMonsterManager.grantSpawnProtection(socket.id);
     // Send current game time to newly connected player
     const currentGameTime = Date.now() - gameStartTime;
     socket.emit('gameTime', currentGameTime);
@@ -317,6 +320,8 @@ io.on('connection', (socket) => {
     // Handle player respawn
     socket.on('playerRespawned', () => {
         monsterManager.respawnPlayer(socket.id);
+        // Also grant spawn protection in NightMonsterManager
+        nightMonsterManager.grantSpawnProtection(socket.id);
     });
     // Handle monster damage events
     socket.on('monsterDamaged', (data) => {
@@ -385,6 +390,9 @@ io.on('connection', (socket) => {
         socketToPlayerId.delete(socket.id);
         // Clean up attack cooldown for this player
         monsterManager.cleanupPlayerCooldown(socket.id);
+        // Clean up spawn protection tracking
+        monsterManager.removeSpawnProtection(socket.id);
+        nightMonsterManager.removeSpawnProtection(socket.id);
         // Notify other players
         io.emit('playerLeft', socket.id);
     });
