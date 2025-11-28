@@ -531,14 +531,27 @@ export class VRGame {
     public onXRFrame(time: number, frame: XRFrame): void {
         if (!this.referenceSpace || !this.xrSession) return;
         
-        // Get player position for thumbstick movement
+        const deltaTime = time - this.lastTime;
+        this.lastTime = time;
+        
+        // Update player controller first (this processes thumbstick input and updates position)
+        // We need to pass the base reference space for head rotation tracking
+        if (!this.isDead) {
+            this.playerController.update(deltaTime, frame);
+        }
+        
+        // Get updated player position after thumbstick movement
         const playerPosition = this.playerController.getPosition();
         
         // Create offset reference space to move camera with player
         // This is how thumbstick movement works in WebXR - we offset the reference space
+        // The offset moves the entire XR space to match the player's world position
+        // Since 'local-floor' reference space has origin at floor level, we offset by the floor position
+        // Player position is eye height, so floor position is eye height - 1.6m
+        const floorHeight = playerPosition.y - 1.6;
         const offsetTransform = new XRRigidTransform(
             { x: 0, y: 0, z: 0, w: 1 }, // No rotation change
-            { x: playerPosition.x, y: playerPosition.y, z: playerPosition.z } // Move camera to player position
+            { x: playerPosition.x, y: floorHeight, z: playerPosition.z } // Offset by floor position
         );
         const offsetReferenceSpace = this.referenceSpace.getOffsetReferenceSpace(offsetTransform);
         
@@ -565,10 +578,7 @@ export class VRGame {
         // Update controllers using offset reference space (so they move with player)
         this.controllerManager.update(frame, offsetReferenceSpace);
         
-        const deltaTime = time - this.lastTime;
-        this.lastTime = time;
-        
-        // Update game systems
+        // Update game systems (player controller already updated above)
         this.update(deltaTime, frame);
         
         // Handle VR input
@@ -592,9 +602,14 @@ export class VRGame {
     }
 
     private update(deltaTime: number, xrFrame?: XRFrame): void {
-        if (!this.isDead) {
-            // Update player controller (pass XR frame for VR position tracking)
+        // Note: In VR mode, player controller is updated in onXRFrame before getting position
+        // This avoids double updates and ensures thumbstick movement is processed correctly
+        if (!this.isDead && !this.isInVR) {
+            // Update player controller for non-VR mode
             this.playerController.update(deltaTime, xrFrame);
+            this.updateSpawnProtection();
+        } else if (!this.isDead && this.isInVR) {
+            // In VR mode, only update spawn protection here (player controller already updated in onXRFrame)
             this.updateSpawnProtection();
         }
 
