@@ -61,18 +61,12 @@ export class VRPlayerController {
             return;
         }
 
-        // Update position from XR reference space if available
+        // Update rotation from XR reference space if available
+        // Note: We use head rotation for movement direction, but NOT head position for movement
+        // This allows thumbstick movement to work properly
         if (xrFrame && this.referenceSpace) {
             const pose = xrFrame.getViewerPose(this.referenceSpace);
             if (pose) {
-                // Update position based on XR head position
-                // Note: In VR, the camera position is managed by WebXR, but we track the player's ground position
-                const headPosition = new THREE.Vector3(
-                    pose.transform.position.x,
-                    pose.transform.position.y,
-                    pose.transform.position.z
-                );
-                
                 // Extract Y rotation from head orientation for character rotation
                 const headQuat = new THREE.Quaternion(
                     pose.transform.orientation.x,
@@ -83,10 +77,9 @@ export class VRPlayerController {
                 const euler = new THREE.Euler().setFromQuaternion(headQuat);
                 this.rotationY = euler.y;
                 
-                // Update horizontal position from head (but keep our own Y for physics)
-                this.position.x = headPosition.x;
-                this.position.z = headPosition.z;
-                // Keep our own Y position for physics (gravity, jumping, etc.)
+                // Note: We do NOT update position from head position here
+                // This allows thumbstick movement to work. The camera position is managed by WebXR,
+                // but we maintain our own world position for thumbstick-based movement.
             }
         }
 
@@ -129,8 +122,8 @@ export class VRPlayerController {
 
         // Apply thumbstick input
         if (Math.abs(thumbstickX) > 0.1 || Math.abs(thumbstickY) > 0.1) {
-            const moveForward = forward.multiplyScalar(thumbstickY * speed);
-            const moveRight = right.multiplyScalar(thumbstickX * speed);
+            const moveForward = forward.clone().multiplyScalar(thumbstickY * speed);
+            const moveRight = right.clone().multiplyScalar(thumbstickX * speed);
             this.velocity.add(moveForward);
             this.velocity.add(moveRight);
         }

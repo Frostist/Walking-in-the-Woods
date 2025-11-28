@@ -202,6 +202,9 @@ export class VRGame {
 
         try {
             // Request immersive VR session
+            // Note: Frame rate is determined by the device's native refresh rate
+            // For Quest 2/3 to run at 120Hz, enable "120Hz Refresh Rate" in Quest settings
+            // The device will automatically use the highest supported refresh rate
             this.xrSession = await navigator.xr!.requestSession('immersive-vr', {
                 requiredFeatures: ['local-floor'],
                 optionalFeatures: ['bounded-floor', 'hand-tracking']
