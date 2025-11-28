@@ -98,49 +98,37 @@ export class VRPlayerController {
         const thumbstickX = leftState.thumbstick.x;
         const thumbstickY = leftState.thumbstick.y;
         
-        // Debug: Log thumbstick values occasionally
-        if (Math.random() < 0.01) { // 1% of the time
-            console.log('Thumbstick:', { x: thumbstickX.toFixed(2), y: thumbstickY.toFixed(2) });
-        }
-        
-        // Calculate movement direction based on head rotation (where player is looking)
+        // Calculate movement direction based on head rotation
         const forward = new THREE.Vector3();
         const right = new THREE.Vector3();
         
-        // Forward direction based on head rotation (rotationY)
+        // Forward is based on head rotation (rotationY)
         forward.set(
             Math.sin(this.rotationY),
             0,
             Math.cos(this.rotationY)
         ).normalize();
         
-        // Right direction (perpendicular to forward)
         right.set(
             Math.cos(this.rotationY),
             0,
             -Math.sin(this.rotationY)
         ).normalize();
 
-        // Check sprint (right grip button)
-        const speed = rightState.grip
+        // Check sprint (right thumbstick pressed down or grip)
+        const speed = (rightState.grip || Math.abs(rightState.thumbstick.y) > 0.8)
             ? this.moveSpeed * this.sprintMultiplier 
             : this.moveSpeed;
 
-        // Apply thumbstick input - move in direction player is looking
-        // thumbstickY: forward (positive) / backward (negative)
-        // thumbstickX: right (positive) / left (negative)
-        if (Math.abs(thumbstickX) > 0.05 || Math.abs(thumbstickY) > 0.05) {
-            // Forward/backward movement
+        // Apply thumbstick input
+        if (Math.abs(thumbstickX) > 0.1 || Math.abs(thumbstickY) > 0.1) {
             const moveForward = forward.clone().multiplyScalar(thumbstickY * speed);
-            // Left/right strafe movement
             const moveRight = right.clone().multiplyScalar(thumbstickX * speed);
-            
-            // Add to velocity
             this.velocity.add(moveForward);
             this.velocity.add(moveRight);
         }
 
-        // Normalize velocity if moving diagonally to prevent faster diagonal movement
+        // Normalize velocity if moving diagonally
         if (this.velocity.length() > speed) {
             this.velocity.normalize().multiplyScalar(speed);
         }

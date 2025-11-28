@@ -531,13 +531,7 @@ export class VRGame {
     public onXRFrame(time: number, frame: XRFrame): void {
         if (!this.referenceSpace || !this.xrSession) return;
         
-        const deltaTime = time - this.lastTime;
-        this.lastTime = time;
-        
-        // Update game systems FIRST (this updates player position based on thumbstick input)
-        this.update(deltaTime, frame);
-        
-        // Get updated player position AFTER movement update
+        // Get player position for thumbstick movement
         const playerPosition = this.playerController.getPosition();
         
         // Create offset reference space to move camera with player
@@ -547,9 +541,6 @@ export class VRGame {
             { x: playerPosition.x, y: playerPosition.y, z: playerPosition.z } // Move camera to player position
         );
         const offsetReferenceSpace = this.referenceSpace.getOffsetReferenceSpace(offsetTransform);
-        
-        // Update controllers using offset reference space (so they move with player)
-        this.controllerManager.update(frame, offsetReferenceSpace);
         
         // Get viewer pose from offset reference space (this gives us the head position with thumbstick movement)
         const viewerPose = frame.getViewerPose(offsetReferenceSpace);
@@ -571,6 +562,15 @@ export class VRGame {
             this.camera.updateMatrixWorld();
         }
         
+        // Update controllers using offset reference space (so they move with player)
+        this.controllerManager.update(frame, offsetReferenceSpace);
+        
+        const deltaTime = time - this.lastTime;
+        this.lastTime = time;
+        
+        // Update game systems
+        this.update(deltaTime, frame);
+        
         // Handle VR input
         this.handleVRInput();
         
@@ -588,20 +588,7 @@ export class VRGame {
         }
         
         // Render the scene (WebXR will handle the actual rendering to the headset)
-        // Note: We update camera position above, but Three.js might override it
-        // So we update it again after render if needed
         this.renderer.render(this.scene, this.camera);
-        
-        // Update camera again after render to ensure it stays at player position
-        if (viewerPose) {
-            const pose = viewerPose.transform;
-            this.camera.position.set(
-                pose.position.x,
-                pose.position.y,
-                pose.position.z
-            );
-            this.camera.updateMatrixWorld();
-        }
     }
 
     private update(deltaTime: number, xrFrame?: XRFrame): void {
