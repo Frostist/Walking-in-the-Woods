@@ -531,10 +531,17 @@ export class VRGame {
     public onXRFrame(time: number, frame: XRFrame): void {
         if (!this.referenceSpace || !this.xrSession) return;
         
-        // Get player position for thumbstick movement
+        // 1. Calculate deltaTime
+        const deltaTime = time - this.lastTime;
+        this.lastTime = time;
+        
+        // 2. Update game systems FIRST (processes thumbstick, updates player position)
+        this.update(deltaTime, frame);
+        
+        // 3. Get updated player position AFTER movement update
         const playerPosition = this.playerController.getPosition();
         
-        // Create offset reference space to move camera with player
+        // 4. Create offset reference space based on updated position
         // This is how thumbstick movement works in WebXR - we offset the reference space
         const offsetTransform = new XRRigidTransform(
             { x: 0, y: 0, z: 0, w: 1 }, // No rotation change
@@ -542,11 +549,9 @@ export class VRGame {
         );
         const offsetReferenceSpace = this.referenceSpace.getOffsetReferenceSpace(offsetTransform);
         
-        // Get viewer pose from offset reference space (this gives us the head position with thumbstick movement)
+        // 5. Update camera from offset reference space
         const viewerPose = frame.getViewerPose(offsetReferenceSpace);
         if (viewerPose) {
-            // Update camera position and rotation based on offset reference space
-            // This moves the camera with the player for thumbstick movement
             const pose = viewerPose.transform;
             this.camera.position.set(
                 pose.position.x,
@@ -562,16 +567,10 @@ export class VRGame {
             this.camera.updateMatrixWorld();
         }
         
-        // Update controllers using offset reference space (so they move with player)
+        // 6. Update controllers using SAME offset reference space
         this.controllerManager.update(frame, offsetReferenceSpace);
         
-        const deltaTime = time - this.lastTime;
-        this.lastTime = time;
-        
-        // Update game systems
-        this.update(deltaTime, frame);
-        
-        // Handle VR input
+        // 7. Handle VR input
         this.handleVRInput();
         
         // Update block preview with right controller
