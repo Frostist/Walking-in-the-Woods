@@ -218,6 +218,13 @@ export class VRGame {
             this.renderer.xr.setSession(this.xrSession);
             this.isInVR = true;
             
+            // Register the animation loop for VR rendering
+            this.renderer.setAnimationLoop((time: number, frame: XRFrame | undefined) => {
+                if (frame && this.referenceSpace) {
+                    this.onXRFrame(time, frame);
+                }
+            });
+            
             // Hide VR button
             const button = document.getElementById('enter-vr-button');
             if (button) {
@@ -240,6 +247,10 @@ export class VRGame {
     
     private exitVR(): void {
         this.isInVR = false;
+        
+        // Stop the VR animation loop
+        this.renderer.setAnimationLoop(null);
+        
         this.xrSession = null;
         this.referenceSpace = null;
         
@@ -533,6 +544,16 @@ export class VRGame {
             const rightRay = this.controllerManager.getRightRay();
             this.blockManager.updatePreview(rightRay, this.camera, 10);
         }
+        
+        // Update remote player health bars
+        const trees = this.sceneManager.getTrees();
+        const blocks = this.blockManager.getAllBlockMeshes();
+        for (const remotePlayer of this.remotePlayers.values()) {
+            remotePlayer.updateHealthBarPosition(this.camera, this.renderer, trees, blocks);
+        }
+        
+        // Render the scene (WebXR will handle the actual rendering to the headset)
+        this.renderer.render(this.scene, this.camera);
     }
 
     private update(deltaTime: number, xrFrame?: XRFrame): void {
