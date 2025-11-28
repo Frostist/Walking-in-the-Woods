@@ -1,5 +1,5 @@
 {
-  "name": "game-server",
+  "name": "walking-in-the-woods-server",
   "version": "1.0.0",
   "description": "Socket.io server for multiplayer game",
   "type": "module",

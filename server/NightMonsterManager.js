@@ -220,8 +220,8 @@ export class NightMonsterManager {
             const verticalDistance = Math.abs(dy);
             // Check if monster is close enough to attack (both horizontally and vertically)
             // Only attack if player doesn't have spawn protection
-            if (horizontalDistance <= NIGHT_MONSTER_ATTACK_RANGE && 
-                verticalDistance <= NIGHT_MONSTER_ATTACK_VERTICAL_RANGE && 
+            if (horizontalDistance <= NIGHT_MONSTER_ATTACK_RANGE &&
+                verticalDistance <= NIGHT_MONSTER_ATTACK_VERTICAL_RANGE &&
                 !this.hasSpawnProtection(nearestPlayer.id)) {
                 const now = Date.now();
                 const cooldowns = this.monsterAttackCooldowns.get(monster.id);
