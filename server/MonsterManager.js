@@ -5,7 +5,8 @@ const MONSTER_SPEED = 3.0; // Units per second
 const MONSTER_UPDATE_INTERVAL = 50; // Update every 50ms (20 times per second)
 const MONSTER_RESPAWN_TIME = 30000; // 30 seconds to respawn after death
 const MONSTER_DAMAGE = 1; // Damage per attack
-const MONSTER_ATTACK_RANGE = 2.0; // Distance at which monster can attack
+const MONSTER_ATTACK_RANGE = 2.0; // Horizontal distance at which monster can attack
+const MONSTER_ATTACK_VERTICAL_RANGE = 2.5; // Vertical distance range for attacks (allows attacking players slightly above/below)
 const MONSTER_ATTACK_COOLDOWN = 1000; // 1 second between attacks (per player)
 // Safe spawn zone constants (must match client-side values)
 const SPAWN_ZONE_CENTER = { x: 0, z: 0 };
@@ -207,10 +208,14 @@ export class MonsterManager {
         // Calculate direction to nearest player
         const dx = nearestPlayer.position.x - this.monster.position.x;
         const dz = nearestPlayer.position.z - this.monster.position.z;
-        const distance = Math.sqrt(dx * dx + dz * dz);
-        // Check if monster is close enough to attack
+        const dy = nearestPlayer.position.y - this.monster.position.y;
+        const horizontalDistance = Math.sqrt(dx * dx + dz * dz);
+        const verticalDistance = Math.abs(dy);
+        // Check if monster is close enough to attack (both horizontally and vertically)
         // Only attack if player doesn't have spawn protection
-        if (distance <= MONSTER_ATTACK_RANGE && !this.hasSpawnProtection(nearestPlayer.id)) {
+        if (horizontalDistance <= MONSTER_ATTACK_RANGE && 
+            verticalDistance <= MONSTER_ATTACK_VERTICAL_RANGE && 
+            !this.hasSpawnProtection(nearestPlayer.id)) {
             const now = Date.now();
             const lastAttackTime = this.monsterAttackCooldowns.get(nearestPlayer.id) || 0;
             // Check if cooldown has expired
@@ -227,10 +232,10 @@ export class MonsterManager {
             }
         }
         // Only move if player is far enough away
-        if (distance > 0.1) {
+        if (horizontalDistance > 0.1) {
             // Use smooth direct movement (simplified from pathfinding)
-            const dirX = dx / distance;
-            const dirZ = dz / distance;
+            const dirX = dx / horizontalDistance;
+            const dirZ = dz / horizontalDistance;
             // Calculate new position
             const moveDistance = MONSTER_SPEED * (deltaTime / 1000);
             const newX = this.monster.position.x + dirX * moveDistance;

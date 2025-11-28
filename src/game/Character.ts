@@ -167,7 +167,16 @@ export class Character {
     public updatePosition(playerPosition: THREE.Vector3, rotationY: number): void {
         // Update position when in scene (both first-person and third-person now keep mesh in scene)
         // playerPosition.y is eye height (1.6), so ground level where feet are is playerPosition.y - 1.6
+        // Always update position to ensure hitbox follows player vertically
         if (this.mesh.parent === this.scene) {
+            const groundY = playerPosition.y - 1.6;
+            this.mesh.position.set(playerPosition.x, groundY, playerPosition.z);
+            this.mesh.rotation.y = rotationY;
+        } else {
+            // If mesh is not in scene, ensure it gets added and positioned correctly
+            if (!this.scene.children.includes(this.mesh)) {
+                this.scene.add(this.mesh);
+            }
             const groundY = playerPosition.y - 1.6;
             this.mesh.position.set(playerPosition.x, groundY, playerPosition.z);
             this.mesh.rotation.y = rotationY;

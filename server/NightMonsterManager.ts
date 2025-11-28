@@ -39,7 +39,8 @@ const NIGHT_MONSTER_MAX_HEALTH = 5;
 const NIGHT_MONSTER_SPEED = 2.5;
 const NIGHT_MONSTER_UPDATE_INTERVAL = 50; // Update every 50ms
 const NIGHT_MONSTER_DAMAGE = 1;
-const NIGHT_MONSTER_ATTACK_RANGE = 2.0;
+const NIGHT_MONSTER_ATTACK_RANGE = 2.0; // Horizontal distance at which monster can attack
+const NIGHT_MONSTER_ATTACK_VERTICAL_RANGE = 2.5; // Vertical distance range for attacks (allows attacking players slightly above/below)
 const NIGHT_MONSTER_ATTACK_COOLDOWN = 1000;
 const MAX_NIGHT_MONSTERS = 10; // Maximum number of night monsters at once
 const MIN_NIGHT_MONSTERS = 1; // Minimum number of night monsters to spawn
@@ -293,11 +294,15 @@ export class NightMonsterManager {
             // Calculate direction to nearest player
             const dx = nearestPlayer.position.x - monster.position.x;
             const dz = nearestPlayer.position.z - monster.position.z;
-            const distance = Math.sqrt(dx * dx + dz * dz);
+            const dy = nearestPlayer.position.y - monster.position.y;
+            const horizontalDistance = Math.sqrt(dx * dx + dz * dz);
+            const verticalDistance = Math.abs(dy);
             
-            // Check if monster is close enough to attack
+            // Check if monster is close enough to attack (both horizontally and vertically)
             // Only attack if player doesn't have spawn protection
-            if (distance <= NIGHT_MONSTER_ATTACK_RANGE && !this.hasSpawnProtection(nearestPlayer.id)) {
+            if (horizontalDistance <= NIGHT_MONSTER_ATTACK_RANGE && 
+                verticalDistance <= NIGHT_MONSTER_ATTACK_VERTICAL_RANGE && 
+                !this.hasSpawnProtection(nearestPlayer.id)) {
                 const now = Date.now();
                 const cooldowns = this.monsterAttackCooldowns.get(monster.id);
                 if (cooldowns) {
@@ -323,10 +328,10 @@ export class NightMonsterManager {
             }
             
             // Move towards player
-            if (distance > 0.1) {
+            if (horizontalDistance > 0.1) {
                 const moveDistance = NIGHT_MONSTER_SPEED * (deltaTime / 1000);
-                const dirX = dx / distance;
-                const dirZ = dz / distance;
+                const dirX = dx / horizontalDistance;
+                const dirZ = dz / horizontalDistance;
                 
                 const newX = monster.position.x + dirX * moveDistance;
                 const newZ = monster.position.z + dirZ * moveDistance;
