@@ -24,7 +24,6 @@ export class VRGame {
     private bullets: Bullet[] = [];
     private blockManager: BlockManager;
     private nightMonsters: Map<string, NightMonster> = new Map();
-    private raycaster: THREE.Raycaster;
     private leaderboard: Leaderboard;
     private updateNotifier: UpdateNotifier;
     private lastTime: number = 0;
@@ -50,6 +49,7 @@ export class VRGame {
     private lastRightGrip: boolean = false;
     private lastLeftGrip: boolean = false;
     private lastRightButtonB: boolean = false;
+    private lastRightButtonA: boolean = false;
     private currentBlockTypeIndex: number = 0;
     private blockTypes: string[] = ['stone', 'dirt', 'grass', 'wood', 'sand'];
 
@@ -88,7 +88,6 @@ export class VRGame {
         this.sceneManager = new SceneManager(this.scene);
         this.character = new Character(this.camera, this.scene);
         this.blockManager = new BlockManager(this.scene);
-        this.raycaster = new THREE.Raycaster();
         
         // Connect block manager to player controller
         this.playerController.setBlockManager(this.blockManager);
@@ -397,10 +396,19 @@ export class VRGame {
     }
     
     private handleVRInput(): void {
-        if (this.isDead || !this.isInVR) return;
+        if (!this.isInVR) return;
         
         const rightState = this.controllerManager.getRightControllerState();
         const leftState = this.controllerManager.getLeftControllerState();
+        
+        // Respawn with A button if dead
+        if (this.isDead) {
+            if (rightState.buttonA && !this.lastRightButtonA) {
+                this.respawn();
+            }
+            this.lastRightButtonA = rightState.buttonA;
+            return;
+        }
         
         // Shooting with right trigger
         if (rightState.trigger && !this.lastRightTrigger) {
@@ -427,6 +435,9 @@ export class VRGame {
             this.showBlockTypeNotification(this.blockTypes[this.currentBlockTypeIndex]);
         }
         this.lastRightButtonB = rightState.buttonB;
+        
+        // Update A button state for respawn detection
+        this.lastRightButtonA = rightState.buttonA;
     }
     
     private shoot(): void {

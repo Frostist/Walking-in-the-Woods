@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { BlockManager } from './BlockManager';
-import { VRControllerManager, ControllerState } from './VRControllerManager';
+import { VRControllerManager } from './VRControllerManager';
 
 export class VRPlayerController {
     private position: THREE.Vector3;
