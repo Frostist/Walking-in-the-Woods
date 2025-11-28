@@ -107,9 +107,7 @@ export class VRControllerManager {
             }
 
             // Update controller pose
-            // Use gripSpace for controller positioning (per WebXR docs), fall back to targetRaySpace if not available
-            const space = inputSource.gripSpace || inputSource.targetRaySpace;
-            const pose = frame.getPose(space, referenceSpace);
+            const pose = frame.getPose(inputSource.targetRaySpace, referenceSpace);
             if (pose && controllerGroup) {
                 targetState.position.set(
                     pose.transform.position.x,
