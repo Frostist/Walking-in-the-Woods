@@ -222,6 +222,7 @@ export class VRGame {
             this.isInVR = true;
             
             // Register the animation loop for VR rendering
+            // We'll update the reference space offset each frame for thumbstick movement
             this.renderer.setAnimationLoop((time: number, frame: XRFrame | undefined) => {
                 if (frame && this.referenceSpace) {
                     this.onXRFrame(time, frame);
@@ -530,8 +531,39 @@ export class VRGame {
     public onXRFrame(time: number, frame: XRFrame): void {
         if (!this.referenceSpace || !this.xrSession) return;
         
-        // Update controllers
-        this.controllerManager.update(frame, this.referenceSpace);
+        // Get player position for thumbstick movement
+        const playerPosition = this.playerController.getPosition();
+        
+        // Create offset reference space to move camera with player
+        // This is how thumbstick movement works in WebXR - we offset the reference space
+        const offsetTransform = new XRRigidTransform(
+            { x: 0, y: 0, z: 0, w: 1 }, // No rotation change
+            { x: playerPosition.x, y: playerPosition.y, z: playerPosition.z } // Move camera to player position
+        );
+        const offsetReferenceSpace = this.referenceSpace.getOffsetReferenceSpace(offsetTransform);
+        
+        // Get viewer pose from offset reference space (this gives us the head position with thumbstick movement)
+        const viewerPose = frame.getViewerPose(offsetReferenceSpace);
+        if (viewerPose) {
+            // Update camera position and rotation based on offset reference space
+            // This moves the camera with the player for thumbstick movement
+            const pose = viewerPose.transform;
+            this.camera.position.set(
+                pose.position.x,
+                pose.position.y,
+                pose.position.z
+            );
+            this.camera.quaternion.set(
+                pose.orientation.x,
+                pose.orientation.y,
+                pose.orientation.z,
+                pose.orientation.w
+            );
+            this.camera.updateMatrixWorld();
+        }
+        
+        // Update controllers using offset reference space (so they move with player)
+        this.controllerManager.update(frame, offsetReferenceSpace);
         
         const deltaTime = time - this.lastTime;
         this.lastTime = time;
